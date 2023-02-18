@@ -32,10 +32,12 @@ public:
             {
                 m_pendulumParams.refreshInertia();
             }
-            if (ImGui::Button("Randomize"))
+            ImGui::InputDouble("Friction", &m_pendulumParams.b1);
+            if (ImGui::Button("Generate"))
             {
                 m_pendulumParams.l1 = m_rng.uniform() * 10;
                 m_pendulumParams.m1 = m_rng.uniform() * 10;
+                m_pendulumParams.b1 = m_rng.uniform() * 10;
                 m_pendulumParams.refreshInertia();
             }
         }
