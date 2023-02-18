@@ -4,3 +4,8 @@
 /Pendulum/packages/Eigen.3.3.3
 /Pendulum/Pendulum/Debug
 /Pendulum/Pendulum/x64/Debug
+Debug
+*.user
+.vs
+*/build
+*/bin
