@@ -39,6 +39,7 @@ public:
                 m_pendulumParams.refreshInertia();
             }
         }
+
         // Plot state
         if(ImGui::CollapsingHeader("State"))
         {
@@ -53,17 +54,14 @@ public:
                 m_pendulumState.dTheta += m_rng.uniform() - 0.5;
             }
         }
-        // randomize state button
-        // Bool is paused or running?
+
+        // Run simulation
         ImGui::Checkbox("Run", &m_isRunningSimulation);
         if (m_isRunningSimulation)
         {
             advanceSimulation();
         }
-        // if running
-        //   get dt
-        //   run substeps
-        // 
+
         // Display results
         if(ImGui::Begin("Simulation"))
         {
@@ -80,7 +78,6 @@ public:
             ImPlot::EndPlot();
         }
         ImGui::End();
-        // Plot state
     }
 
 private:
