@@ -32,6 +32,12 @@ public:
             {
                 m_pendulumParams.refreshInertia();
             }
+            if (ImGui::Button("Randomize"))
+            {
+                m_pendulumParams.l1 = m_rng.uniform() * 10;
+                m_pendulumParams.m1 = m_rng.uniform() * 10;
+                m_pendulumParams.refreshInertia();
+            }
         }
         // Plot state
         if(ImGui::CollapsingHeader("State"))
@@ -44,7 +50,7 @@ public:
             }
             if (ImGui::Button("Perturbate"))
             {
-                m_pendulumState.dTheta += m_rng.uniform();
+                m_pendulumState.dTheta += m_rng.uniform() - 0.5;
             }
         }
         // randomize state button
