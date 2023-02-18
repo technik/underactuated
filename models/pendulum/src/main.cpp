@@ -100,7 +100,7 @@ private:
 
     bool m_isRunningSimulation = false;
     double m_accumTime = 0;
-    double m_stepDt = 0.01;
+    double m_stepDt = 0.001;
 
     void advanceSimulation()
     {
@@ -125,7 +125,7 @@ private:
         const auto invInertia = m_pendulumParams.I1 > 0 ? (1 / m_pendulumParams.I1) : 0;
         auto ddq = torque * invInertia;
 
-        x.theta += m_stepDt * x.dTheta;
+        x.theta += m_stepDt * x.dTheta + 0.5 *ddq * m_stepDt * m_stepDt;
         x.dTheta += ddq * m_stepDt;
     }
 
