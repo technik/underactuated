@@ -1,8 +1,3 @@
-//-------------------------------------------------------------------------------------------------
-// Toy path tracer
-//-------------------------------------------------------------------------------------------------
-// Based on the minibook 'Raytracing in one weekend' and Aras P.'s series: Daily pathtracer
-// https://aras-p.info/blog/
 //--------------------------------------------------------------------------------------------------
 // Copyright 2018 Carmelo J Fdez-Aguera
 // 
@@ -38,5 +33,21 @@ namespace math
 	inline float min(float a, float b)
 	{
 		return a<b?a:b; // Same NaN behavior as simd
+	}
+
+	inline double max(double a, double b)
+	{
+		return a > b ? a : b; // Same NaN behavior as simd
+	}
+
+	inline double min(double a, double b)
+	{
+		return a < b ? a : b; // Same NaN behavior as simd
+	}
+
+	template<typename T>
+	inline T clamp(T x, T _min, T _max)
+	{
+		return min(_max, max(_min, x));
 	}
 }

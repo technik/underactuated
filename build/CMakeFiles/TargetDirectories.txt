@@ -1,3 +1,4 @@
 C:/repos/underactuated/build/CMakeFiles/ALL_BUILD.dir
 C:/repos/underactuated/build/CMakeFiles/ZERO_CHECK.dir
+C:/repos/underactuated/build/models/acrobot/CMakeFiles/acrobot.dir
 C:/repos/underactuated/build/models/pendulum/CMakeFiles/pendulum.dir

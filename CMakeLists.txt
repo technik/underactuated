@@ -46,4 +46,5 @@ macro(compile_HLSL_flags _SOURCE SOURCE_LIST OUTPUT_LIST _PROFILE)
         )
 endmacro()
 
+add_subdirectory(models/acrobot)
 add_subdirectory(models/pendulum)

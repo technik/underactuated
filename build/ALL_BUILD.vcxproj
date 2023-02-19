@@ -173,6 +173,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </ProjectReference>
+    <ProjectReference Include="C:\repos\underactuated\build\models\acrobot\acrobot.vcxproj">
+      <Project>{ACACF64D-DE8B-3BA7-A164-686E516A0930}</Project>
+      <Name>acrobot</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\repos\underactuated\build\models\pendulum\pendulum.vcxproj">
       <Project>{EC925451-35C7-35A1-B493-DBB0B1802FDC}</Project>
       <Name>pendulum</Name>
