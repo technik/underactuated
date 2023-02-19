@@ -33,6 +33,7 @@ public:
                 m_pendulumParams.refreshInertia();
             }
             ImGui::InputDouble("Friction", &m_pendulumParams.b1);
+            ImGui::InputDouble("Torque Limit", &m_pendulumParams.MaxQ);
             if (ImGui::Button("Generate"))
             {
                 m_pendulumParams.l1 = m_rng.uniform() * 10;
@@ -55,6 +56,16 @@ public:
             {
                 m_pendulumState.dTheta += m_rng.uniform() - 0.5;
             }
+        }
+
+        // Plot state
+        if (ImGui::CollapsingHeader("Control"))
+        {
+            bool control = m_control == ControlMode::EnergyPump;
+            ImGui::Checkbox("Energy Pump", &control);
+            m_control = control ? ControlMode::EnergyPump : ControlMode::Free;
+
+            ImGui::InputDouble("Gain", &m_energyGain);
         }
 
         // Run simulation
@@ -89,6 +100,7 @@ private:
         double m1 = 1; // Bar masses
         double b1 = 0; // Friction at the joints
         double I1 = 1; // Inertia tensors
+        double MaxQ = 0; // Torque limit. 0 means unlimited torque
 
         void refreshInertia()
         {
@@ -103,9 +115,19 @@ private:
         double dTheta = 0;
     } m_pendulumState;
 
+    enum class ControlMode
+    {
+        Free,
+        EnergyPump
+    };
+
+    ControlMode m_control = ControlMode::Free;
+
     bool m_isRunningSimulation = false;
     double m_accumTime = 0;
     double m_stepDt = 0.001;
+    
+    double m_energyGain = 1;
 
     void advanceSimulation()
     {
@@ -118,14 +140,66 @@ private:
         }
     }
 
+    double computeControllerInput()
+    {
+        if (m_control == ControlMode::Free)
+        {
+            return 0;
+        }
+        else
+        {
+            auto& x = m_pendulumState;
+            auto& p = m_pendulumParams;
+            // Target energy to stay still at the top:
+            auto mgl = p.m1 * g * p.l1;
+            auto Egoal = mgl;
+
+            // Current energy
+            auto T = 0.5 * p.m1 * p.l1 * p.l1 * x.dTheta * x.dTheta;
+            auto V = p.m1 * g * p.l1 * -cos(x.theta);
+            auto E = T + V;
+
+            // Choose control method
+            bool pumpEnergy = false;
+            // Find the lowest angle we can stall at with MaxQ
+            bool torqueLimited = p.MaxQ != 0 && p.MaxQ < p.m1* p.l1* g;
+            if (torqueLimited)
+            {
+                auto minCos = p.MaxQ / mgl;
+                if (-cos(x.theta) <= minCos)
+                    pumpEnergy = true;
+            }
+
+            if (pumpEnergy)
+            {
+                auto dE = Egoal - E;
+
+                // Expected damping
+                auto tDamp = -p.b1 * x.dTheta;
+                auto Ugoal = -tDamp + m_energyGain * dE * x.dTheta;
+                auto U = Ugoal;
+                if(p.MaxQ > 0)
+                    U = std::min(p.MaxQ, std::max(-p.MaxQ, Ugoal));
+                return U;
+            }
+            else
+            {
+                // Switch to a position error controller
+                // or maybe a bang-bang?
+                return 0;
+            }
+        }
+    }
+
     void stepSimulation()
     {
         auto& params = m_pendulumParams;
         auto& x = m_pendulumState;
 
+        auto u = computeControllerInput();
+
         auto b = m_pendulumParams.b1;
-        const auto g = 9.81;
-        auto torque = -params.b1 * x.dTheta - sin(x.theta) * g * params.l1;
+        auto torque = u -params.b1 * x.dTheta - sin(x.theta) * g * params.l1;
 
         const auto invInertia = m_pendulumParams.I1 > 0 ? (1 / m_pendulumParams.I1) : 0;
         auto ddq = torque * invInertia;
@@ -133,6 +207,8 @@ private:
         x.theta += m_stepDt * x.dTheta + 0.5 *ddq * m_stepDt * m_stepDt;
         x.dTheta += ddq * m_stepDt;
     }
+
+    static constexpr auto g = 9.81;
 
     static int squirrelNoise(int position, int seed = 0)
     {
