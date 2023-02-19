@@ -6,6 +6,7 @@
 #include "app.h"
 #include <math/noise.h>
 #include <math/vector.h>
+#include <math/matrix.h>
 #include <numbers>
 #include <random>
 
@@ -27,51 +28,51 @@ public:
         if (ImGui::CollapsingHeader("Params"))
         {
             bool inertiaChanged = false;
-            inertiaChanged |= ImGui::InputDouble("Mass 1", &m_params.m1);
-            inertiaChanged |= ImGui::InputDouble("Mass 2", &m_params.m2);
-            inertiaChanged |= ImGui::InputDouble("Length 1", &m_params.l1);
-            inertiaChanged |= ImGui::InputDouble("Length 2", &m_params.l2);
+            inertiaChanged |= ImGui::InputDouble("Mass 1", &m_acrobot.p.m1);
+            inertiaChanged |= ImGui::InputDouble("Mass 2", &m_acrobot.p.m2);
+            inertiaChanged |= ImGui::InputDouble("Length 1", &m_acrobot.p.l1);
+            inertiaChanged |= ImGui::InputDouble("Length 2", &m_acrobot.p.l2);
             if(inertiaChanged)
             {
-                m_params.refreshInertia();
+                m_acrobot.p.refreshInertia();
             }
-            ImGui::InputDouble("Friction 1", &m_params.b1);
-            ImGui::InputDouble("Friction 2", &m_params.b2);
-            ImGui::InputDouble("Torque Limit", &m_params.MaxQ);
+            ImGui::InputDouble("Friction 1", &m_acrobot.p.b1);
+            ImGui::InputDouble("Friction 2", &m_acrobot.p.b2);
+            ImGui::InputDouble("Torque Limit", &m_acrobot.p.MaxQ);
 
             if (ImGui::Button("Generate"))
             {
-                m_params.l1 = m_rng.uniform() * 10;
-                m_params.l2 = m_rng.uniform() * 10;
-                m_params.m1 = m_rng.uniform() * 10;
-                m_params.m2 = m_rng.uniform() * 10;
-                m_params.b1 = m_rng.uniform() * 10;
-                m_params.b2 = m_rng.uniform() * 10;
-                m_params.refreshInertia();
+                m_acrobot.p.l1 = m_rng.uniform() * 10;
+                m_acrobot.p.l2 = m_rng.uniform() * 10;
+                m_acrobot.p.m1 = m_rng.uniform() * 10;
+                m_acrobot.p.m2 = m_rng.uniform() * 10;
+                m_acrobot.p.b1 = m_rng.uniform() * 10;
+                m_acrobot.p.b2 = m_rng.uniform() * 10;
+                m_acrobot.p.refreshInertia();
             }
         }
 
         // Plot state
         if(ImGui::CollapsingHeader("State"))
         {
-            ImGui::InputDouble("q1", &m_state.q1);
-            ImGui::InputDouble("q2", &m_state.q2);
-            ImGui::InputDouble("dq1", &m_state.dq1);
-            ImGui::InputDouble("dq2", &m_state.dq2);
+            ImGui::InputDouble("q1", &m_acrobot.x.q1);
+            ImGui::InputDouble("q2", &m_acrobot.x.q2);
+            ImGui::InputDouble("dq1", &m_acrobot.x.dq1);
+            ImGui::InputDouble("dq2", &m_acrobot.x.dq2);
             if (ImGui::Button("Randomize State"))
             {
-                m_state.q1 = m_rng.uniform() * 2 * 3.1415927;
-                m_state.q2 = m_rng.uniform() * 2 * 3.1415927;
+                m_acrobot.x.q1 = m_rng.uniform() * 2 * 3.1415927;
+                m_acrobot.x.q2 = m_rng.uniform() * 2 * 3.1415927;
             }
             if (ImGui::Button("Reset Speed"))
             {
-                m_state.dq1 = 0;
-                m_state.dq2 = 0;
+                m_acrobot.x.dq1 = 0;
+                m_acrobot.x.dq2 = 0;
             }
             if (ImGui::Button("Perturbate"))
             {
-                m_state.dq1 += m_rng.uniform() - 0.5;
-                m_state.dq2 += m_rng.uniform() - 0.5;
+                m_acrobot.x.dq1 += m_rng.uniform() - 0.5;
+                m_acrobot.x.dq2 += m_rng.uniform() - 0.5;
             }
         }
 
@@ -90,7 +91,7 @@ public:
         // Display results
         if(ImGui::Begin("Simulation"))
         {
-            float size = float(1.1 * (m_params.l1 + m_params.l2));
+            float size = float(1.1 * (m_acrobot.p.l1 + m_acrobot.p.l2));
             if(ImPlot::BeginPlot("Acrobot", ImVec2(-1, -1), ImPlotFlags_Equal))
             {
                 // Set up rigid axes
@@ -106,27 +107,71 @@ public:
     }
 
 private:
-    struct AcrobotParams
+    struct Acrobot
     {
-        double l1 = 1, l2 = 1; // Bar lengths
-        double m1 = 1, m2 = 1; // Bar masses
-        double b1 = 0, b2 = 0; // Friction at the joints
-        double I1 = 1, I2 = 1; // Inertia tensors
-        double MaxQ = 0; // Torque limit. 0 means unlimited torque
-
-        void refreshInertia()
+        struct Params
         {
-            // Inertia concentrated at the end
-            I1 = m1 * l1 * l1;
-            I2 = m2 * l2 * l2;
-        }
-    } m_params;
+            double l1 = 1, l2 = 1; // Bar lengths
+            double m1 = 1, m2 = 1; // Bar masses
+            double b1 = 0, b2 = 0; // Friction at the joints
+            double I1 = 1, I2 = 1; // Inertia tensors
+            double MaxQ = 0; // Torque limit. 0 means unlimited torque
 
-    struct AcrobotState
-    {
-        double q1 = 0, q2 = 0; // positions
-        double dq1 = 0, dq2 = 0; // velocities
-    } m_state;
+            void refreshInertia()
+            {
+                // Inertia concentrated at the end
+                I1 = m1 * l1 * l1 / 12;
+                I2 = m2 * l2 * l2 / 12;
+            }
+        } p;
+
+        struct State
+        {
+            double q1 = 0, q2 = 0; // positions
+            double dq1 = 0, dq2 = 0; // velocities
+        } x;
+
+        static double kineticEnergy(
+            double m1, double m2,
+            double l1, double l2,
+            double I1, double I2,
+            double q1, double q2,
+            double dq1, double dq2
+        )
+        {
+            auto T1 = 0.5 * I1 * pow(q1, 2);
+            auto T2 =
+                (m2 * pow(l1, 2) + I2 + 2 * m2 * l1 * l2 * cos(q2)) * pow(dq1, 2) / 2
+                + I2 * pow(dq2, 2) / 2
+                + (I2 + m2 * l1 * l2 * cos(q2)) * dq1 * dq2;
+
+            return T1+T2;
+        }
+
+        static double PotentialEnergy(
+            double m1, double m2,
+            double l1, double l2,
+            double q1, double q2
+        )
+        {
+            auto q1_q2 = q1 + q2;
+            auto cq1 = cos(q1);
+            auto cq2 = cos(q1_q2);
+            return -m1 * g * l1 * cq1 - m2 * g * (l1 * cq1 + l2 * cq2);
+        }
+
+        // Manipulator equations
+        Mat22d M(Vec2d q)
+        {
+            return Mat22d(
+                p.I1 + p.I2 + p.m2 * pow(p.l1, 2) + 2 * p.m2 * p.l1 * p.l2 * cos(q[2]),
+                p.I2 + p.m2 * p.l1 * p.l2 * cos(q[2]),
+                p.I2 + p.m2*p.l1*p.l2*cos(q[2]),
+                p.I2
+            );
+        }
+
+    } m_acrobot;
 
     bool m_isRunningSimulation = false;
     double m_accumTime = 0;
@@ -159,10 +204,10 @@ private:
     void plotPendulum()
     {
         plotCircle<20>("Origin", 0, 0, 0.1f);
-        double x1 = m_params.l1 * sin(m_state.q1);
-        double y1 = -m_params.l1 * cos(m_state.q1);
-        double x2 = x1 + m_params.l2 * sin(m_state.q1 + m_state.q2);
-        double y2 = y1 - m_params.l2 * cos(m_state.q1 + m_state.q2);
+        double x1 = m_acrobot.p.l1 * sin(m_acrobot.x.q1);
+        double y1 = -m_acrobot.p.l1 * cos(m_acrobot.x.q1);
+        double x2 = x1 + m_acrobot.p.l2 * sin(m_acrobot.x.q1 + m_acrobot.x.q2);
+        double y2 = y1 - m_acrobot.p.l2 * cos(m_acrobot.x.q1 + m_acrobot.x.q2);
         plotLine("l1", { 0, 0 }, { x1, y1 });
         plotLine("l2", { x1, y1 }, { x2, y2 });
         plotCircle<20>("End point", x2, y2, 0.1f);

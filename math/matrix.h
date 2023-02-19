@@ -22,11 +22,77 @@
 #include <cassert>
 #include <initializer_list>
 #include "aabb.h"
+#include "vector.h"
 
 #include <DirectXMath.h>
 
 namespace math
 {
+	template<class T>
+	struct Mat22
+	{
+		using Column = Vec2<T>;
+
+		Mat22() = default;
+		Mat22(T a00, T a01, T a10, T a11)
+			: m{{a00,a10}, {a01,a11}}
+		{}
+
+		auto det() const
+		{
+			return m[0][0] * m[1][1] - m[1][0] * m[0][1];
+		}
+
+		Mat22 operator+(const Mat22& b) const
+		{
+			return Mat22(
+				m[0][0] + b.m[0][0], m[0][1] + b.m[0][1],
+				m[1][0] + b.m[1][0], m[1][1] + b.m[1][1]
+			);
+		}
+
+		Mat22 operator-(const Mat22& b) const
+		{
+			return Mat22(
+				m[0][0] + b.m[0][0], m[0][1] + b.m[0][1],
+				m[1][0] + b.m[1][0], m[1][1] + b.m[1][1]
+			);
+		}
+
+		Vec2<T> operator*(const Vec2<T>& v) const
+		{
+			Vec2<T> result;
+			result[0] = m[0][0] * v[0] + m[1][0] * v[1];
+			result[1] = m[0][0] * v[0] + m[1][0] * v[1];
+			return result;
+		}
+
+		double operator()(size_t row, size_t col) const
+		{
+			return m[col][row];
+		}
+
+		double& operator()(size_t row, size_t col)
+		{
+			return m[col][row];
+		}
+	private:
+		Column m[2];
+	};
+
+	template<class T>
+	Mat22<T> operator*(const Mat22<T>& a, const Mat22<T>& b)
+	{
+		Mat22<T> result;
+		result(0, 0) = a(0, 0) * b(0, 0) + a(0, 1) * b(1, 0);
+		result(0, 1) = a(0, 0) * b(0, 1) + a(0, 1) * b(1, 1);
+		result(1, 0) = a(1, 0) * b(0, 0) + a(1, 1) * b(1, 0);
+		result(1, 1) = a(1, 0) * b(0, 1) + a(1, 1) * b(1, 1);
+		return result;
+	}
+
+	using Mat22d = Mat22<double>;
+
 	class alignas(4 * sizeof(float)) Matrix34f
 	{
 	public:

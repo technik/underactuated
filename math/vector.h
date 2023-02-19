@@ -126,6 +126,10 @@ namespace math
 	template<class T> using Vector3 = Vector<T,3>;
 	template<class T> using Vector4 = Vector<T,4>;
 
+	template<class T> using Vec2 = Vector<T, 2>;
+	template<class T> using Vec3 = Vector<T, 3>;
+	template<class T> using Vec4 = Vector<T, 4>;
+
 	using Vec2f = Vector2<float>;
 	using Vec3f = Vector3<float>;
 	using Vec4f = Vector4<float>;

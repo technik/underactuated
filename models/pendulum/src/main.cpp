@@ -105,7 +105,7 @@ private:
         void refreshInertia()
         {
             // Inertia concentrated at the end
-            I1 = m1 * l1 * l1;
+            I1 = m1 * l1 * l1 / 3;
         }
     } m_pendulumParams;
 
