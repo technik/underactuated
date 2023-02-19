@@ -161,8 +161,8 @@ private:
         plotCircle<20>("Origin", 0, 0, 0.1f);
         double x1 = m_params.l1 * sin(m_state.q1);
         double y1 = -m_params.l1 * cos(m_state.q1);
-        double x2 = x1 + m_params.l2 * sin(m_state.q2);
-        double y2 = y1 - m_params.l2 * cos(m_state.q2);
+        double x2 = x1 + m_params.l2 * sin(m_state.q1 + m_state.q2);
+        double y2 = y1 - m_params.l2 * cos(m_state.q1 + m_state.q2);
         plotLine("l1", { 0, 0 }, { x1, y1 });
         plotLine("l2", { x1, y1 }, { x2, y2 });
         plotCircle<20>("End point", x2, y2, 0.1f);
