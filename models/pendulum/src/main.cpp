@@ -13,6 +13,89 @@ static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
 
 using namespace math;
 
+struct Pendulum
+{
+    struct Params
+    {
+        double l1 = 1; // Bar lengths
+        double m1 = 1; // Bar masses
+        double b1 = 0; // Friction at the joints
+        double I1 = 1; // Inertia tensors
+        double MaxQ = 0; // Torque limit. 0 means unlimited torque
+        double MaxPower = 0; // Power limit. 0 means unlimited power
+
+        void refreshInertia()
+        {
+            // Inertia concentrated at the end
+            I1 = m1 * l1 * l1 / 3;
+        }
+    };
+
+    struct State
+    {
+        double theta = 0;
+        double dTheta = 0;
+    };
+
+    struct Controller
+    {
+        virtual void drawInterface() {}
+        virtual double control(const State& x) = 0;
+    };
+};
+
+struct LQRValueIterationController : public Pendulum::Controller
+{
+    void drawInterface() override
+    {
+    }
+
+    double control(const Pendulum::State& x) override
+    {
+        return 0;
+    }
+
+    void computePolicy()
+    {
+        // LQR cost = x2 + dx2 + u2
+        const double clearCost = policySizeX * policySizeX * 1000;
+
+        // Discrete actions
+        double actions[3] = { -m_maxQ, 0, m_maxQ };
+    }
+
+    double cost(Pendulum::State s, double action)
+    {
+        // LQR cost = x2 + dx2 + u2
+        // Limit action to the power and torque constrains
+        auto maxQPower = abs(s.dTheta * m_maxQ); // Power required under max Q
+        double maxQ = maxQPower > m_maxPower ?
+            abs(m_maxPower / s.dTheta) : // Power limited
+            m_maxQ; // Torque limited
+
+        return -1;
+    }
+
+    double m_maxQ;
+    double m_maxPower;
+
+    int policySizeX = 51;
+    int policySizeY = 51;
+    std::vector<double> m_policy;
+};
+
+struct EnergyPumpController : public Pendulum::Controller
+{
+    void drawInterface() override
+    {
+    }
+
+    double control(const Pendulum::State& x) override
+    {
+        return 0;
+    }
+};
+
 class PendulumApp : public App
 {
 public:
@@ -94,33 +177,15 @@ public:
     }
 
 private:
-    struct PendulumParams
-    {
-        double l1 = 1; // Bar lengths
-        double m1 = 1; // Bar masses
-        double b1 = 0; // Friction at the joints
-        double I1 = 1; // Inertia tensors
-        double MaxQ = 0; // Torque limit. 0 means unlimited torque
 
-        void refreshInertia()
-        {
-            // Inertia concentrated at the end
-            I1 = m1 * l1 * l1 / 3;
-        }
-    } m_pendulumParams;
-
-    struct PendulumState
-    {
-        double theta = 0;
-        double dTheta = 0;
-    } m_pendulumState;
+    Pendulum::Params m_pendulumParams;
+    Pendulum::State m_pendulumState;
 
     enum class ControlMode
     {
         Free,
         EnergyPump
     };
-
     ControlMode m_control = ControlMode::Free;
 
     bool m_isRunningSimulation = false;
