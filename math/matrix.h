@@ -91,6 +91,16 @@ namespace math
 		return result;
 	}
 
+	template<class T>
+	Vec2<T> operator*(const Vec2<T>& v, const Mat22<T>& m)
+	{
+		Vec2<T> result(
+			v[0]*m(0,0) + v[1]*m(0,1),
+			v[0]*m(1,0) + v[1]*m(1,1)
+		);
+		return result;
+	}
+
 	using Mat22d = Mat22<double>;
 
 	class alignas(4 * sizeof(float)) Matrix34f

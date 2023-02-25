@@ -5,6 +5,7 @@
 #include <cmath>
 #include "app.h"
 #include <math/vector.h>
+#include <math/matrix.h>
 #include <numbers>
 #include <random>
 
@@ -48,6 +49,13 @@ struct LQRValueIterationController : public Pendulum::Controller
 {
     void drawInterface() override
     {
+        if (ImGui::Begin("Approx LQR"))
+        {
+            ImGui::InputInt("Max iterations", &m_maxIterations);
+            if(ImGui::Button("Recompute Policy"))
+            { }
+            ImGui::End();
+        }
     }
 
     double control(const Pendulum::State& x) override
@@ -57,30 +65,49 @@ struct LQRValueIterationController : public Pendulum::Controller
 
     void computePolicy()
     {
-        // LQR cost = x2 + dx2 + u2
-        const double clearCost = policySizeX * policySizeX * 1000;
+        // Initialize policy
+        const double clearCost = m_policySizeX * m_policySizeX * 1000;
+        m_policy.clear();
+        m_policy.resize(m_policySizeX * m_policySizeX, clearCost);
 
         // Discrete actions
-        double actions[3] = { -m_maxQ, 0, m_maxQ };
+        double actions[3] = { -m_maxTorque, 0, m_maxTorque };
+
+        int maxIterations = 50;
     }
 
     double cost(Pendulum::State s, double action)
     {
         // LQR cost = x2 + dx2 + u2
         // Limit action to the power and torque constrains
-        auto maxQPower = abs(s.dTheta * m_maxQ); // Power required under max Q
+        auto maxQPower = abs(s.dTheta * m_maxTorque); // Power required under max Q
         double maxQ = maxQPower > m_maxPower ?
             abs(m_maxPower / s.dTheta) : // Power limited
-            m_maxQ; // Torque limited
+            m_maxTorque; // Torque limited
 
-        return -1;
+        double u = action > 0 ? maxQ : (action < 0 ? -maxQ : 0);
+
+        Vec2d x = Vec2d{ s.theta, s.dTheta } - goal;
+
+        return x * Q * x + u * R * u;
     }
 
-    double m_maxQ;
-    double m_maxPower;
+    double m_maxTorque = 0;
+    double m_maxPower = 0;
 
-    int policySizeX = 51;
-    int policySizeY = 51;
+    // Control params
+    Mat22d Q = Mat22d(
+        1, 0,
+        0, 10); // State cost
+    double R = 1; // actuation cost
+
+    // Statistics
+    Vec2d goal = { 3.1415927, 0 }; // Still on top
+
+    int m_maxIterations = 50;
+    int m_lastIterations = 0;
+    int m_policySizeX = 51;
+    int m_policySizeY = 51;
     std::vector<double> m_policy;
 };
 
@@ -177,6 +204,8 @@ public:
     }
 
 private:
+
+    LQRValueIterationController m_approxLQR;
 
     Pendulum::Params m_pendulumParams;
     Pendulum::State m_pendulumState;

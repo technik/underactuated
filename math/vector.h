@@ -258,6 +258,12 @@ namespace math
 		return true;
 	}
 
+	template<class T> // Dot product short-hand
+	T operator*(const Vector2<T>& a, const Vector2<T>& b)
+	{
+		return a[0] * b[0] + a[1] * b[1];
+	}
+
 	//---------------------------------------------------------------------------------------------
 	// Inline methods
 	//---------------------------------------------------------------------------------------------
