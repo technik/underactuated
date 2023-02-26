@@ -10,3 +10,9 @@ Debug
 build
 */build
 */bin
+
+
+ROS/*.catkin_tools
+ROS/*/devel/
+ROS/*/build/
+ROS/*/logs/
