@@ -104,6 +104,50 @@ namespace Dynamixel
 		{
 			return m_checksum == computeChecksum();
 		}
+
+		void ledOn()
+		{
+			setRegister8(RAMAddress::LED, 1);
+		}
+
+		void ledOff()
+		{
+			setRegister8(RAMAddress::LED, 0);
+		}
+
+		void enableTorque(bool on)
+		{
+			setRegister8(RAMAddress::TorqueEnable, on);
+		}
+
+		void setGoalPos(uint16_t pos)
+		{
+			setRegister16(RAMAddress::GoalPosition, pos);
+		}
+
+		void setRegister8(RAMAddress address, uint8_t x)
+		{
+			write(address, &x);
+		}
+
+		void setRegister16(RAMAddress address, uint16_t x)
+		{
+			write(address, &x);
+		}
+
+		template<class T>
+		void write(RAMAddress address, const T* data)
+		{
+			m_instruction = Instruction::Write;
+
+			// Set payload
+			m_payload[0] = (uint8_t)address;
+			auto rawData = (const uint8_t*)data;
+			for(int i = 0; i < sizeof(T); ++i)
+				m_payload[i+1] = rawData[i];
+			
+			setPayloadSize(sizeof(T)+1);
+		}
 	};
 
 	#define DXSerial Serial1
@@ -111,54 +155,10 @@ namespace Dynamixel
 	class Controller
 	{
 	public:
-		void LedOn()
+
+		void send()
 		{
-			SetRegister8(RAMAddress::LED, 1);
-		}
-
-		void LedOff()
-		{
-			SetRegister8(RAMAddress::LED, 0);
-		}
-
-		void EnableTorque(bool on)
-		{
-			SetRegister8(RAMAddress::TorqueEnable, on);
-		}
-
-		void SetGoalPos(uint16_t pos)
-		{
-			SetRegister16(RAMAddress::GoalPosition, pos);
-		}
-
-		void SetRegister8(RAMAddress address, uint8_t x)
-		{
-			Write(address, &x);
-		}
-
-		void SetRegister16(RAMAddress address, uint16_t x)
-		{
-			Write(address, &x);
-		}
-
-		template<class T>
-		void Write(RAMAddress address, const T* data)
-		{
-			m_packet.m_instruction = Instruction::Write;
-
-			// Set payload
-			m_packet.m_payload[0] = (uint8_t)address;
-			auto rawData = (const uint8_t*)data;
-			for(int i = 0; i < sizeof(T); ++i)
-				m_packet.m_payload[i+1] = rawData[i];
-			
-			m_packet.setPayloadSize(sizeof(T)+1);
-
-			Send();
-		}
-
-		void Send()
-		{
+			// Disable listening on this port
 			// Header
 			DXSerial.write(0xff);
 			DXSerial.write(0xff);
@@ -201,10 +201,18 @@ namespace Dynamixel
 		uint8_t m_state = Header1;
 		uint8_t m_payloadPos;
 
-		void Read(HardwareSerial& serial, Packet& packet)
+		void reset()
 		{
-			while(!serial.available())
-			{}
+			m_state = State::Header1;
+			m_payloadPos = 0;
+		}
+
+		void read(HardwareSerial& serial, Packet& packet)
+		{
+			if(!serial.available())
+			{
+				return;
+			}
 			uint8_t c = serial.read();
 			switch (m_state)
 			{
@@ -253,11 +261,8 @@ namespace Dynamixel
 	};
 }
 
-Dynamixel::Packet g_writePackage;
-Dynamixel::Packet g_readPackage;
-
-Dynamixel::Monitor g_monitor;
 Dynamixel::Controller g_controller;
+Dynamixel::Monitor g_pcMonitor;
 
 void setup()
 {
@@ -267,31 +272,80 @@ void setup()
 	Serial.begin(115200);
 	Serial1.begin(1000000);
 
-	g_controller.setId(4);
-	g_controller.LedOn();
-	g_controller.EnableTorque(true);
+	g_controller.setId(4); // Need to set the id ahead of time
+	g_controller.m_packet.ledOn();
+	g_controller.send();
+	g_controller.m_packet.enableTorque(true);
+	g_controller.send();
 }
+
+unsigned long lastTick = 0;
+bool ledOn = false;
+
+struct CircularBuffer
+{
+	uint8_t m_readPos = 0;
+	uint8_t m_writePos = 0;
+	uint8_t m_buffer[64];
+
+	void write(uint8_t c)
+	{
+		m_buffer[m_writePos & 0x3f] = c;
+		m_writePos++;
+	}
+
+	bool available() const
+	{
+		return m_writePos > m_readPos;
+	}
+
+	uint8_t read()
+	{
+		auto c = m_buffer[m_readPos & 0x3f];
+		m_readPos++;
+		m_readPos &= 0x7f;
+		m_writePos &= 0x7f;
+		return c;
+	}
+};
+
+CircularBuffer g_ringBuffer;
 
 void loop()
 {
 	// Read serial message
-	Dynamixel::Packet pcPacket;
-	Dynamixel::Monitor pcMonitor;
-	while(!pcMonitor.isReady())
+	g_pcMonitor.read(Serial, g_controller.m_packet);
+	if(g_pcMonitor.isReady())
 	{
-		pcMonitor.Read(Serial, pcPacket);
+		g_controller.send();
 	}
 	// Execute command
+	g_controller.send();
 	// Read response
+	while(Serial1.available())
+	{
+		g_ringBuffer.write(Serial1.read());
+	}
 	// Report response
-	// put your main code here, to run repeatedly:
-	g_controller.LedOff();
-	g_controller.SetGoalPos(100);
-	digitalWrite(13, HIGH);
-	delay(250);
-	
-	g_controller.LedOn();
-	g_controller.SetGoalPos(200);
-	digitalWrite(13, LOW);
-	delay(500);
+	while(g_ringBuffer.available())
+	{
+		Serial.write(g_ringBuffer.read());
+	}
+	// Tick
+	auto t = millis();
+	if(t - lastTick)
+	{
+		lastTick = t;
+		if(ledOn)
+		{
+			g_controller.m_packet.ledOff();
+			g_controller.send();
+		}
+		else
+		{
+			g_controller.m_packet.ledOn();
+			g_controller.send();
+		}
+		ledOn = !ledOn;
+	}
 }
