@@ -1,1 +1,3 @@
-/opt/ros/noetic/share/catkin/cmake/toplevel.cmake
+INCLUDE(
+    /opt/ros/noetic/share/catkin/cmake/toplevel.cmake
+)
