@@ -14,5 +14,9 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-add_executable(controller src/controller.cpp)
+# Nodes
+add_executable(controller nodes/controller/controller.cpp)
 target_link_libraries(controller ${catkin_LIBRARIES})
+
+add_executable(sim nodes/sim/simulator.cpp)
+target_link_libraries(sim ${catkin_LIBRARIES})
