@@ -1,8 +1,43 @@
+// Stand in pendulum simulator
+
 #include "ros/ros.h"
 #include "geometry_msgs/Wrench.h"
 #include "gazebo_msgs/ModelState.h"
 #include <cmath>
 #include <mutex>
+
+static int squirrelNoise(int position, int seed = 0)
+{
+    constexpr unsigned int BIT_NOISE1 = 0xB5297A4D;
+    constexpr unsigned int BIT_NOISE2 = 0x68E31DA4;
+    constexpr unsigned int BIT_NOISE3 = 0x1B56C4E9;
+
+    int mangled = position;
+    mangled *= BIT_NOISE1;
+    mangled += seed;
+    mangled ^= (mangled >> 8);
+    mangled *= BIT_NOISE2;
+    mangled ^= (mangled << 8);
+    mangled *= BIT_NOISE3;
+    mangled ^= (mangled >> 8);
+    return mangled;
+}
+
+struct squirrelRng
+{
+    int rand()
+    {
+        return squirrelNoise(state++);
+    }
+
+    float uniform()
+    {
+        auto i = rand();
+        return float(i & ((1 << 24) - 1)) / (1 << 24);
+    }
+
+    int state = 0;
+};
 
 struct Pendulum
 {
@@ -20,112 +55,95 @@ struct Pendulum
             // Inertia concentrated at the end
             I1 = m1 * l1 * l1 / 3;
         }
-    };
+        
+        void randomize(squirrelRng& rng)
+        {
+            l1 = rng.uniform() * 10;
+            m1 = rng.uniform() * 10;
+            b1 = rng.uniform() * 10;
+            refreshInertia();
+        }
+    } m_params;
 
     struct State
     {
         double theta = 0;
         double dTheta = 0;
-    };
 
-    struct Controller
-    {
-        virtual double control(const State& x, const Params& p) = 0;
-    };
-};
-
-struct EnergyPumpController : public Pendulum::Controller
-{
+        void perturbate(squirrelRng& rng)
+        {
+            dTheta += rng.uniform() - 0.5;
+        }
+        
+        void randomize(squirrelRng& rng)
+        {
+            theta = rng.uniform() * 2 * 3.1415927;
+        }
+    } m_state;
+    
     static constexpr auto g = 9.81;
-    double energyGain = 1;
 
-    double control(const Pendulum::State& x, const Pendulum::Params& p) override
+    void stepSimulation(double stepDt)
     {
-        // Target energy to stay still at the top:
-        auto mgl = p.m1 * g * p.l1;
-        auto Egoal = mgl;
+        auto& p = m_params;
+        auto& x = m_state;
 
-        // Current energy
-        auto T = 0.5 * p.m1 * p.l1 * p.l1 * x.dTheta * x.dTheta;
-        auto V = p.m1 * g * p.l1 * -std::cos(x.theta);
-        auto E = T + V;
+        auto u = 0;//computeControllerInput();
 
-        // Choose control method
-        bool pumpEnergy = false;
-        // Find the lowest angle we can stall at with MaxQ
-        bool torqueLimited = p.MaxQ != 0 && p.MaxQ < p.m1* p.l1* g;
-        if (torqueLimited)
-        {
-            auto minCos = p.MaxQ / mgl;
-            if (-std::cos(x.theta) <= minCos)
-                pumpEnergy = true;
-        }
+        auto b = p.b1;
+        auto torque = u -p.b1 * x.dTheta - sin(x.theta) * g * p.l1;
 
-        if (pumpEnergy)
-        {
-            auto dE = Egoal - E;
+        const auto invInertia = p.I1 > 0 ? (1 / p.I1) : 0;
+        auto ddq = torque * invInertia;
 
-            // Expected damping
-            auto tDamp = -p.b1 * x.dTheta;
-            auto Ugoal = -tDamp + energyGain * dE * x.dTheta;
-            auto U = Ugoal;
-            if(p.MaxQ > 0)
-                U = std::min(p.MaxQ, std::max(-p.MaxQ, Ugoal));
-            return U;
-        }
-        else
-        {
-            // Switch to a position error controller
-            // or maybe a bang-bang?
-            return 0;
-        }
+        x.theta += stepDt * x.dTheta + 0.5 *ddq * stepDt * stepDt;
+        x.dTheta += ddq * stepDt;
     }
 };
 
-struct PendulumInstance
-{
-    Pendulum::Params     params;
-    Pendulum::State      state;
-    EnergyPumpController controller;
-    std::mutex           state_mutex; 
-};
+using StateMsg = gazebo_msgs::ModelState;
+using PoseMsg = geometry_msgs::Pose;
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "controller");
-    ros::NodeHandle n;
+    // Init ROS
+    ros::init(argc, argv, "pendulum_sim");
+    ros::NodeHandle nodeHandle;
 
-    PendulumInstance p;
+    // Set up ROS topics for this node
+    constexpr auto cQueueSize = 1;
+    auto statePublisher = nodeHandle.advertise<StateMsg>("pendulum_x", cQueueSize);
 
-    ros::Publisher  controller_pub = n.advertise<geometry_msgs::Wrench>("control_u", 1);
-    ros::Subscriber controller_sub = n.subscribe<gazebo_msgs::ModelState>("pendulum_x", 1, 
-        [&](const gazebo_msgs::ModelState::ConstPtr& pendulum_x) {
-            const std::lock_guard<std::mutex> lock(p.state_mutex);
-            p.state.theta =  2.0*std::acos(pendulum_x->pose.orientation.w);
-            p.state.dTheta = pendulum_x->twist.angular.z;
-            // lock_guard mutex released when it goes out of scope
-        }
-    );
-
-    ros::Rate loop_rate(100);
+    // Initialize a pendulum
+    squirrelRng rng;
+    rng.rand(); // Seed random number generator
+    Pendulum pendulum;
+    pendulum.m_params.randomize(rng);
+    pendulum.m_state.randomize(rng);
     
-    geometry_msgs::Wrench control_u;
-    Pendulum::State localState;
-    while (ros::ok())
+    // Set up simulation loop
+    constexpr int updateRate = 100; // Hertz
+    constexpr double stepDt = 1.0 / updateRate;
+    ros::Rate loopRate(100);
+    int i = 0;
+    while(ros::ok())
     {
-    
+        // Random perturbations
+        if(++i >= 300)
         {
-            const std::lock_guard<std::mutex> lock(p.state_mutex);
-            localState = p.state;
+            i = 0;
+            pendulum.m_state.randomize(rng);
         }
+        // Simulate
+        //pendulum.stepSimulation(stepDt);
 
-        auto u = p.controller.control(localState, p.params);
-
-        control_u.torque.z = u;
-        controller_pub.publish(control_u);
+        // Publish state
+        StateMsg stateUpdate;
+        stateUpdate.pose.orientation.w = pendulum.m_state.theta;
+        statePublisher.publish(stateUpdate);
 
         ros::spinOnce();
-        loop_rate.sleep();
+        loopRate.sleep();
     }
     return 0;
 }

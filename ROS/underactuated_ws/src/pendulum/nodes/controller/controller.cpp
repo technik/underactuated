@@ -113,7 +113,7 @@ int main(int argc, char **argv)
     Pendulum::State localState;
     while (ros::ok())
     {
-    
+        
         {
             const std::lock_guard<std::mutex> lock(p.state_mutex);
             localState = p.state;

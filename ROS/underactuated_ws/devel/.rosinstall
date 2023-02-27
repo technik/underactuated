@@ -1,2 +1,2 @@
 - setup-file:
-    local-name: /home/ojferro/Projects/underactuated/ROS/underactuated_ws/devel/setup.sh
+    local-name: /mnt/c/repos/underactuated/ROS/underactuated_ws/devel/setup.sh
