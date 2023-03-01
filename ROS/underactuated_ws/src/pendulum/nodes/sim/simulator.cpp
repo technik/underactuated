@@ -3,41 +3,10 @@
 #include "ros/ros.h"
 #include "geometry_msgs/Wrench.h"
 #include "gazebo_msgs/ModelState.h"
+#include <atomic>
+#include <math/noise.h>
 #include <cmath>
 #include <mutex>
-
-static int squirrelNoise(int position, int seed = 0)
-{
-    constexpr unsigned int BIT_NOISE1 = 0xB5297A4D;
-    constexpr unsigned int BIT_NOISE2 = 0x68E31DA4;
-    constexpr unsigned int BIT_NOISE3 = 0x1B56C4E9;
-
-    int mangled = position;
-    mangled *= BIT_NOISE1;
-    mangled += seed;
-    mangled ^= (mangled >> 8);
-    mangled *= BIT_NOISE2;
-    mangled ^= (mangled << 8);
-    mangled *= BIT_NOISE3;
-    mangled ^= (mangled >> 8);
-    return mangled;
-}
-
-struct squirrelRng
-{
-    int rand()
-    {
-        return squirrelNoise(state++);
-    }
-
-    float uniform()
-    {
-        auto i = rand();
-        return float(i & ((1 << 24) - 1)) / (1 << 24);
-    }
-
-    int state = 0;
-};
 
 struct Pendulum
 {
@@ -56,7 +25,7 @@ struct Pendulum
             I1 = m1 * l1 * l1 / 3;
         }
         
-        void randomize(squirrelRng& rng)
+        void randomize(math::LinearCongruentalGenerator& rng)
         {
             l1 = rng.uniform() * 10;
             m1 = rng.uniform() * 10;
@@ -70,12 +39,12 @@ struct Pendulum
         double theta = 0;
         double dTheta = 0;
 
-        void perturbate(squirrelRng& rng)
+        void perturbate(math::LinearCongruentalGenerator& rng)
         {
             dTheta += rng.uniform() - 0.5;
         }
         
-        void randomize(squirrelRng& rng)
+        void randomize(math::LinearCongruentalGenerator& rng)
         {
             theta = rng.uniform() * 2 * 3.1415927;
         }
@@ -83,12 +52,12 @@ struct Pendulum
     
     static constexpr auto g = 9.81;
 
-    void stepSimulation(double stepDt)
+    void stepSimulation(double stepDt, double controllerInput)
     {
         auto& p = m_params;
         auto& x = m_state;
 
-        auto u = 0;//computeControllerInput();
+        auto u = controllerInput;
 
         auto b = p.b1;
         auto torque = u -p.b1 * x.dTheta - sin(x.theta) * g * p.l1;
@@ -102,6 +71,7 @@ struct Pendulum
 };
 
 using StateMsg = gazebo_msgs::ModelState;
+using ControlMsg = geometry_msgs::Wrench;
 using PoseMsg = geometry_msgs::Pose;
 
 int main(int argc, char **argv)
@@ -110,17 +80,25 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "pendulum_sim");
     ros::NodeHandle nodeHandle;
 
+    // Control action
+    std::atomic<double> torque{};
+    
     // Set up ROS topics for this node
     constexpr auto cQueueSize = 1;
     auto statePublisher = nodeHandle.advertise<StateMsg>("pendulum_x", cQueueSize);
+    auto subscriber = nodeHandle.subscribe<ControlMsg>("control_u", 1,
+        [&](const ControlMsg::ConstPtr& controlAction){
+            torque = controlAction->torque.z;
+        }
+    );
 
     // Initialize a pendulum
-    squirrelRng rng;
+    math::LinearCongruentalGenerator rng;
     rng.rand(); // Seed random number generator
     Pendulum pendulum;
     pendulum.m_params.randomize(rng);
     pendulum.m_state.randomize(rng);
-    
+
     // Set up simulation loop
     constexpr int updateRate = 100; // Hertz
     constexpr double stepDt = 1.0 / updateRate;
@@ -128,14 +106,8 @@ int main(int argc, char **argv)
     int i = 0;
     while(ros::ok())
     {
-        // Random perturbations
-        if(++i >= 300)
-        {
-            i = 0;
-            pendulum.m_state.randomize(rng);
-        }
         // Simulate
-        pendulum.stepSimulation(stepDt);
+        pendulum.stepSimulation(stepDt, torque);
 
         // Publish state
         StateMsg stateUpdate;

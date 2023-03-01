@@ -2,7 +2,7 @@
 
 namespace math
 {
-    static int squirrelNoise(int position, int seed = 0)
+    inline int squirrelNoise(int position, int seed = 0)
     {
         constexpr unsigned int BIT_NOISE1 = 0xB5297A4D;
         constexpr unsigned int BIT_NOISE2 = 0x68E31DA4;
