@@ -135,7 +135,7 @@ int main(int argc, char **argv)
             pendulum.m_state.randomize(rng);
         }
         // Simulate
-        //pendulum.stepSimulation(stepDt);
+        pendulum.stepSimulation(stepDt);
 
         // Publish state
         StateMsg stateUpdate;
