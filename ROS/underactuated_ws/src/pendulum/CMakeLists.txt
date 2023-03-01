@@ -20,3 +20,6 @@ target_link_libraries(controller ${catkin_LIBRARIES})
 
 add_executable(sim nodes/sim/simulator.cpp)
 target_link_libraries(sim ${catkin_LIBRARIES})
+
+add_executable(hal nodes/hal/hal.cpp)
+target_link_libraries(hal ${catkin_LIBRARIES})
