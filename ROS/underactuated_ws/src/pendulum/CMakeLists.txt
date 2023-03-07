@@ -21,3 +21,6 @@ target_link_libraries(controller ${catkin_LIBRARIES})
 
 add_executable(sim nodes/sim/simulator.cpp)
 target_link_libraries(sim ${catkin_LIBRARIES})
+
+add_executable(sim_rk4 nodes/sim/simulator_rk4.cpp)
+target_link_libraries(sim_rk4 ${catkin_LIBRARIES})
