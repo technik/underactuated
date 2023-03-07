@@ -126,13 +126,20 @@ int main(int argc, char **argv)
     constexpr auto cQueueSize = 1;
     auto statePublisher = nodeHandle.advertise<StateMsg>("pendulum_x", cQueueSize);
 
+    std::atomic<double> torque{};
+    auto subscriber = nodeHandle.subscribe<geometry_msgs::Wrench>("control_u", 1,
+        [&](const geometry_msgs::Wrench::ConstPtr& controlAction){
+            torque = controlAction->torque.z;
+        }
+    );
+
     // Initialize a pendulum
     squirrelRng rng;
     rng.rand(); // Seed random number generator
     Pendulum pendulum;
     // pendulum.m_params.randomize(rng);
     // pendulum.m_state.randomize(rng);
-    pendulum.m_state.theta = PI;
+    pendulum.m_state.theta = PI/2.0;
     
     // Set up simulation loop
     constexpr int updateRate = 100; // Hertz
@@ -142,14 +149,14 @@ int main(int argc, char **argv)
     while(ros::ok())
     {
         // Random perturbations
-        if(++i >= 300)
-        {
-            i = 0;
-            pendulum.m_state.perturbate(rng);
-        }
+        // if(++i >= 300)
+        // {
+        //     i = 0;
+        //     pendulum.m_state.perturbate(rng);
+        // }
         // Simulate
         const auto u = 0.0;
-        pendulum.stepSimulation(stepDt, u);
+        pendulum.stepSimulation(stepDt, torque);
 
         // Publish state
         StateMsg stateUpdate;
