@@ -10,12 +10,12 @@ struct Pendulum
 {
     struct Params
     {
-        double l1 = 1; // Bar lengths
-        double m1 = 1; // Bar masses
-        double b1 = 0; // Friction at the joints
-        double I1 = 1; // Inertia tensors
-        double MaxQ = 1; // Torque limit. 0 means unlimited torque
-        double MaxPower = 0; // Power limit. 0 means unlimited power
+        double l1 = 1.0; // Bar lengths
+        double m1 = 1.0; // Bar masses
+        double b1 = 0.0; // Friction at the joints
+        double I1 = 1.0; // Inertia tensors
+        double MaxQ = 1.0; // Torque limit. 0 means unlimited torque
+        double MaxPower = 0.0; // Power limit. 0 means unlimited power
 
         void refreshInertia()
         {
@@ -39,7 +39,7 @@ struct Pendulum
 struct EnergyPumpController : public Pendulum::Controller
 {
     static constexpr auto g = 9.81;
-    double energyGain = 1;
+    double energyGain = 1.0;
     double ePrevPD = 0.0;
 
     double control(const Pendulum::State& x, const Pendulum::Params& p, const double controlHz=100.0) override

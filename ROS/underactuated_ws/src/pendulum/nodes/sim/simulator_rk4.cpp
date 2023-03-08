@@ -43,7 +43,7 @@ struct Pendulum
         State nextState;
         nextState.theta  = state.dTheta;
         nextState.dTheta = -g/m_params.l1 * std::sin(state.theta) + 
-                           (u+m_params.b1*state.dTheta)/(m_params.m1*m_params.l1*m_params.l1);
+                           (u-m_params.b1*state.dTheta)/(m_params.m1*m_params.l1*m_params.l1);
         return nextState;
     }
     void stepSimulation(double stepDt, double u)
