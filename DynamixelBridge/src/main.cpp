@@ -42,8 +42,25 @@ namespace Dynamixel
 		uint16_t 	punch;
 	};
 
-	enum class RAMAddress : uint8_t
+	enum class Address : uint8_t
 	{
+		// EEPROM Addresses
+		ModelNumber = 0,
+		FirmwareVersion = 2,
+		Id,
+		BaudRate,
+		ReturnDelay,
+		CWAngleLimit,
+		CCWAngleLimit = 8,
+		TemperatureLimit = 11,
+		MinVoltage,
+		MaxVoltage,
+		MaxTorque,
+		StatusReturnLevel = 16,
+		AlarmLED,
+		Shutdown,
+
+		// RAM Addresses
 		TorqueEnable = 24,
 		LED,
 		CWComplianceMargin,
@@ -107,36 +124,72 @@ namespace Dynamixel
 
 		void ledOn()
 		{
-			setRegister8(RAMAddress::LED, 1);
+			setRegister8(Address::LED, 1);
 		}
 
 		void ledOff()
 		{
-			setRegister8(RAMAddress::LED, 0);
+			setRegister8(Address::LED, 0);
+		}
+
+		void setMaxTorque(uint16_t maxTorque)
+		{
+			setRegister16(Address::MaxTorque, maxTorque);
 		}
 
 		void enableTorque(bool on)
 		{
-			setRegister8(RAMAddress::TorqueEnable, on);
+			setRegister8(Address::TorqueEnable, on);
+		}
+
+		void setTorqueLimit(uint16_t limit)
+		{
+			setRegister16(Address::TorqueLimit, limit);
+		}
+
+		void SetCWAngleLimit(uint16_t limit)
+		{
+			setRegister16(Address::CWAngleLimit, limit);
+		}
+
+		void SetCCWAngleLimit(uint16_t limit)
+		{
+			setRegister16(Address::CCWAngleLimit, limit);
+		}
+
+		/* When in WheelMode: 0-1023 is positive torque, 1024-2043 is negative torque*/
+		void setMovingSpeed(uint16_t speed)
+		{
+			setRegister16(Address::MovingSpeed, speed);
+		}
+
+		uint16_t getPresentPosition()
+		{
+			setRegister16(Address::MovingSpeed, speed);
 		}
 
 		void setGoalPos(uint16_t pos)
 		{
-			setRegister16(RAMAddress::GoalPosition, pos);
+			setRegister16(Address::GoalPosition, pos);
 		}
 
-		void setRegister8(RAMAddress address, uint8_t x)
+		void setRegister8(Address address, uint8_t x)
 		{
 			write(address, &x);
 		}
 
-		void setRegister16(RAMAddress address, uint16_t x)
+		void setRegister16(Address address, uint16_t x)
 		{
 			write(address, &x);
+		}
+
+		uint16_t setRegister16(Address address)
+		{
+			read(address);
 		}
 
 		template<class T>
-		void write(RAMAddress address, const T* data)
+		void write(Address address, const T* data)
 		{
 			m_instruction = Instruction::Write;
 
