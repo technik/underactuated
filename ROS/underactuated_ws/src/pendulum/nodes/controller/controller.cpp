@@ -42,7 +42,7 @@ struct EnergyPumpController : public Pendulum::Controller
     double energyGain = 1.0;
     double ePrevPD = 0.0;
 
-    double control(const Pendulum::State& x, const Pendulum::Params& p, const double controlHz=100.0) override
+    double control(const Pendulum::State& x, const Pendulum::Params& p, double controlHz=100.0) override
     {
         // Target energy to stay still at the top:
         auto mgl = p.m1 * g * p.l1;
