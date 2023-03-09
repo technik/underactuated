@@ -16,7 +16,7 @@ struct Pendulum
     {
         double l1 = 1; // Bar lengths
         double m1 = 1; // Bar masses
-        double b1 = 0; // Friction at the joints
+        double b1 = 0.0; // Friction at the joints
     } m_params;
 
     struct State
@@ -48,7 +48,11 @@ struct Pendulum
     }
     void stepSimulation(double stepDt, double u)
     {
-        ROS_INFO("U: %f", u);
+        const auto T = 0.5 * m_params.m1 * m_params.l1 * m_params.l1 * m_state.dTheta * m_state.dTheta;
+        const auto V = m_params.m1 * g * m_params.l1 * -std::cos(m_state.theta) + m_params.m1 * g * m_params.l1;
+        const auto E = T + V;
+
+        ROS_INFO("E: %f, U: %f", E, u);
         const auto k1 = f(m_state, u);
         const auto k2 = f(m_state + (k1*(stepDt/2.0)), u);
         const auto k3 = f(m_state + (k2*(stepDt/2.0)), u);
