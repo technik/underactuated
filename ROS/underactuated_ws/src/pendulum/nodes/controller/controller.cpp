@@ -4,16 +4,18 @@
 #include <cmath>
 #include <mutex>
 
+constexpr double PI = 3.14159265358979323;
+
 struct Pendulum
 {
     struct Params
     {
-        double l1 = 1; // Bar lengths
-        double m1 = 1; // Bar masses
-        double b1 = 0; // Friction at the joints
-        double I1 = 1; // Inertia tensors
-        double MaxQ = 0; // Torque limit. 0 means unlimited torque
-        double MaxPower = 0; // Power limit. 0 means unlimited power
+        double l1 = 1.0; // Bar lengths
+        double m1 = 1.0; // Bar masses
+        double b1 = 0.0; // Friction at the joints
+        double I1 = 1.0; // Inertia tensors
+        double MaxQ = 1.0; // Torque limit. 0 means unlimited torque
+        double MaxPower = 0.0; // Power limit. 0 means unlimited power
 
         void refreshInertia()
         {
@@ -30,16 +32,17 @@ struct Pendulum
 
     struct Controller
     {
-        virtual double control(const State& x, const Params& p) = 0;
+        virtual double control(const State& x, const Params& p, const double controlHz) = 0;
     };
 };
 
 struct EnergyPumpController : public Pendulum::Controller
 {
     static constexpr auto g = 9.81;
-    double energyGain = 1;
+    double energyGain = 1.0;
+    double ePrevPD = 0.0;
 
-    double control(const Pendulum::State& x, const Pendulum::Params& p) override
+    double control(const Pendulum::State& x, const Pendulum::Params& p, double controlHz=100.0) override
     {
         // Target energy to stay still at the top:
         auto mgl = p.m1 * g * p.l1;
@@ -49,6 +52,11 @@ struct EnergyPumpController : public Pendulum::Controller
         auto T = 0.5 * p.m1 * p.l1 * p.l1 * x.dTheta * x.dTheta;
         auto V = p.m1 * g * p.l1 * -std::cos(x.theta);
         auto E = T + V;
+
+        // PD Controller params
+        constexpr auto linearRegion = 5.0*PI/180.0; // +- 5 deg at the top is linear enough.
+        double Kp      = 15.0;
+        double Kd      = 1.5;
 
         // Choose control method
         bool pumpEnergy = false;
@@ -61,7 +69,8 @@ struct EnergyPumpController : public Pendulum::Controller
                 pumpEnergy = true;
         }
 
-        if (pumpEnergy)
+
+        if (pumpEnergy && std::abs(x.theta-PI) > linearRegion)
         {
             auto dE = Egoal - E;
 
@@ -72,6 +81,18 @@ struct EnergyPumpController : public Pendulum::Controller
             if(p.MaxQ > 0)
                 U = std::min(p.MaxQ, std::max(-p.MaxQ, Ugoal));
             return U;
+        }
+        else if (std::abs(x.theta-PI) < linearRegion)
+        {
+            // PD Controller
+            const auto e     = PI-x.theta;
+            const auto dT = 1/controlHz;
+            const auto e_dot = (e-ePrevPD)/dT;
+            auto U = Kp*e + Kd*e_dot;
+
+            ePrevPD = e;
+
+            return std::min(p.MaxQ, std::max(-p.MaxQ, U));
         }
         else
         {
@@ -101,13 +122,16 @@ int main(int argc, char **argv)
     ros::Subscriber controller_sub = n.subscribe<gazebo_msgs::ModelState>("pendulum_x", 1, 
         [&](const gazebo_msgs::ModelState::ConstPtr& pendulum_x) {
             const std::lock_guard<std::mutex> lock(p.state_mutex);
-            p.state.theta =  2.0*std::acos(pendulum_x->pose.orientation.w);
+            // Uncomment the math below to treat theta as a quaternion. Currently just using w == theta
+            // p.state.theta = 2.0*std::acos(pendulum_x->pose.orientation.w);
+            p.state.theta =  pendulum_x->pose.orientation.w;
             p.state.dTheta = pendulum_x->twist.angular.z;
             // lock_guard mutex released when it goes out of scope
         }
     );
 
-    ros::Rate loop_rate(100);
+    const auto controlHz = 100.0;
+    ros::Rate loop_rate(controlHz);
     
     geometry_msgs::Wrench control_u;
     Pendulum::State localState;
@@ -119,7 +143,7 @@ int main(int argc, char **argv)
             localState = p.state;
         }
 
-        auto u = p.controller.control(localState, p.params);
+        auto u = p.controller.control(localState, p.params, controlHz);
 
         control_u.torque.z = u;
         controller_pub.publish(control_u);
