@@ -10,9 +10,11 @@ find_package(catkin REQUIRED COMPONENTS
 
 catkin_package()
 
+set(root ${CMAKE_CURRENT_SOURCE_DIR}/../../../..)
+
 include_directories(
   ${catkin_INCLUDE_DIRS}
-  ${CMAKE_CURRENT_SOURCE_DIR}/../../../../
+  ${root}
 )
 
 # Nodes
@@ -21,6 +23,9 @@ target_link_libraries(controller ${catkin_LIBRARIES})
 
 add_executable(sim nodes/sim/simulator.cpp)
 target_link_libraries(sim ${catkin_LIBRARIES})
+
+add_executable(hal nodes/hal/hal.cpp ${root}/core/serial.cpp)
+target_link_libraries(hal ${catkin_LIBRARIES})
 
 add_executable(sim_rk4 nodes/sim/simulator_rk4.cpp)
 target_link_libraries(sim_rk4 ${catkin_LIBRARIES})
