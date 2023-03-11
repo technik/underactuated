@@ -26,3 +26,10 @@ target_link_libraries(sim ${catkin_LIBRARIES})
 
 add_executable(hal nodes/hal/hal.cpp ${root}/core/serial.cpp)
 target_link_libraries(hal ${catkin_LIBRARIES})
+
+add_executable(sim_rk4 nodes/sim/simulator_rk4.cpp)
+target_link_libraries(sim_rk4 ${catkin_LIBRARIES})
+
+catkin_install_python(PROGRAMS nodes/sim/pendulum_viz.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
