@@ -1,4 +1,5 @@
 #include <Arduino.h>
+//#include <ros.h>
 
 namespace Dynamixel
 {
@@ -159,6 +160,7 @@ namespace Dynamixel
 		void send()
 		{
 			// Disable listening on this port
+			UCSR1B &= ~(1<<RXEN1);
 			// Header
 			DXSerial.write(0xff);
 			DXSerial.write(0xff);
@@ -172,7 +174,12 @@ namespace Dynamixel
 			// Checksum
 			DXSerial.write(m_packet.computeChecksum());
 
-			delay(2); // Ignore the response message
+			delayMicroseconds(10); // Avoid transient noise before listening for a response
+
+			// Enable listening on this port again
+			UCSR1B |= (1<<RXEN1);
+
+			//delay(2); // Ignore the response message
 		}
 
 		void setId(uint8_t id)
@@ -333,7 +340,7 @@ void loop()
 	}
 	// Tick
 	auto t = millis();
-	if(t - lastTick)
+	if(t - lastTick > 500)
 	{
 		lastTick = t;
 		if(ledOn)
