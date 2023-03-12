@@ -86,23 +86,30 @@ namespace Dynamixel
 		BulkRead = 0x92,
 	};
 
+	enum class Status : uint8_t
+	{
+		Success = 0,
+		InputVoltageError = 1,
+		AngleLimitError = 2,
+		OverheatingError = 4,
+		RangeError = 8,
+		ChecksumError = 16,
+		OverloadError = 32,
+		InstructionError = 64
+	};
+
 	struct Packet
 	{
 		static constexpr uint8_t cMaxPayload = sizeof(RAMControlTable) + 2; 
 		uint8_t m_id;
 		uint8_t m_length;
-		Instruction m_instruction;
+		uint8_t m_opcode;
 		uint8_t m_payload[cMaxPayload];
 		uint8_t m_checksum;
 
-		void setPayloadSize(uint8_t payloadSize)
-		{
-			m_length = payloadSize + 2;
-		}
-
 		uint8_t computeChecksum()
 		{
-			uint8_t checksum = m_id + m_length + (uint8_t)m_instruction;
+			uint8_t checksum = m_id + m_length + m_opcode;
 			
 			for(int  i = 0; i < m_length-1; ++i)
 			{
@@ -121,7 +128,10 @@ namespace Dynamixel
 		{
 			return m_checksum == computeChecksum();
 		}
+	};
 
+	struct InstructionPacket : Packet
+	{
 		void ledOn()
 		{
 			setRegister8(Address::LED, 1);
@@ -147,23 +157,18 @@ namespace Dynamixel
 			setRegister16(Address::TorqueLimit, limit);
 		}
 
-		void SetCWAngleLimit(uint16_t limit)
+		void setCWAngleLimit(uint16_t limit)
 		{
 			setRegister16(Address::CWAngleLimit, limit);
 		}
 
-		void SetCCWAngleLimit(uint16_t limit)
+		void setCCWAngleLimit(uint16_t limit)
 		{
 			setRegister16(Address::CCWAngleLimit, limit);
 		}
 
-		/* When in WheelMode: 0-1023 is positive torque, 1024-2043 is negative torque*/
+		// When in WheelMode: 0-1023 is positive torque, 1024-2047 is negative torque
 		void setMovingSpeed(uint16_t speed)
-		{
-			setRegister16(Address::MovingSpeed, speed);
-		}
-
-		uint16_t getPresentPosition()
 		{
 			setRegister16(Address::MovingSpeed, speed);
 		}
@@ -183,15 +188,10 @@ namespace Dynamixel
 			write(address, &x);
 		}
 
-		uint16_t setRegister16(Address address)
-		{
-			read(address);
-		}
-
 		template<class T>
 		void write(Address address, const T* data)
 		{
-			m_instruction = Instruction::Write;
+			m_opcode = (uint8_t)Instruction::Write;
 
 			// Set payload
 			m_payload[0] = (uint8_t)address;
@@ -201,6 +201,16 @@ namespace Dynamixel
 			
 			setPayloadSize(sizeof(T)+1);
 		}
+
+		void setPayloadSize(uint8_t payloadSize)
+		{
+			m_length = payloadSize + 2;
+		}
+	};
+
+	struct StatusPacket : Packet
+	{
+		Status getStatus() const { return (Status)m_opcode; }
 	};
 
 	#define DXSerial Serial1
@@ -227,6 +237,8 @@ namespace Dynamixel
 
 			delay(2); // Ignore the response message
 		}
+
+		//
 
 		void setId(uint8_t id)
 		{
