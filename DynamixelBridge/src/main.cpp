@@ -202,68 +202,32 @@ namespace Dynamixel
 			setPayloadSize(sizeof(T)+1);
 		}
 
-<<<<<<< HEAD
-=======
 		void read(Address address, uint8_t byteCount)
 		{
 			m_opcode = (uint8_t)Instruction::Read;
 
+			// Set payload
 			m_payload[0] = (uint8_t)address;
 			m_payload[1] = byteCount;
-
+			
 			setPayloadSize(2);
 		}
 
->>>>>>> master
 		void setPayloadSize(uint8_t payloadSize)
 		{
 			m_length = payloadSize + 2;
 		}
-<<<<<<< HEAD
+
+		void ping()
+		{
+			m_opcode = (uint8_t)Instruction::Ping;
+			setPayloadSize(0);
+		}
 	};
 
 	struct StatusPacket : Packet
 	{
 		Status getStatus() const { return (Status)m_opcode; }
-=======
->>>>>>> master
-	};
-
-	struct StatusPacket : Packet
-	{
-<<<<<<< HEAD
-	public:
-
-		void send()
-		{
-			// Disable listening on this port
-			// Header
-			DXSerial.write(0xff);
-			DXSerial.write(0xff);
-			DXSerial.write(m_packet.m_id);
-			// Length
-			DXSerial.write(m_packet.m_length);
-			// Instruction
-			DXSerial.write(uint8_t(m_packet.m_instruction));
-			// Payload
-			DXSerial.write(m_packet.m_payload, m_packet.m_length-2);
-			// Checksum
-			DXSerial.write(m_packet.computeChecksum());
-
-			delay(2); // Ignore the response message
-		}
-
-		//
-
-		void setId(uint8_t id)
-		{
-			m_packet.m_id = id;
-		}
-
-		Packet m_packet;
-=======
-		Status getStatus() const { return (Status)m_opcode; }
->>>>>>> master
 	};
 
 	class Monitor
@@ -374,7 +338,7 @@ namespace Dynamixel
 		// Returns false on timeout
 		bool receive()
 		{
-			static constexpr uint32_t TimeOutMs = 5; 
+			static constexpr uint32_t TimeOutMs = 25; 
 			auto t = millis();
 			Monitor monitor;
 			while(!monitor.isReady())
@@ -387,6 +351,12 @@ namespace Dynamixel
 			}
 
 			return true;
+		}
+
+		void ping()
+		{
+			instruction().ping();
+			send();
 		}
 
 		void setId(uint8_t id)
@@ -410,6 +380,8 @@ namespace Dynamixel
 			return false; // Didn't receive anything
 		}
 
+		InstructionPacket& instruction() { return *(InstructionPacket*)(&m_packet); }
+
 		Packet m_packet;
 	};
 }
@@ -426,8 +398,9 @@ void setup()
 	Serial1.begin(1000000);
 
 	g_controller.setId(4); // Need to set the id ahead of time
-	//g_controller.m_packet.ledOn();
-	//g_controller.send();
+	g_controller.instruction().ledOn();
+	g_controller.send();
+	delay(2);
 	//g_controller.m_packet.enableTorque(true);
 	//g_controller.send();
 }
@@ -466,6 +439,25 @@ CircularBuffer g_ringBuffer;
 
 void loop()
 {
+	if(ledOn)
+	{
+		g_controller.instruction().ledOff();
+		g_controller.send();
+		digitalWrite(13, HIGH);
+		delay(2);
+	}
+	else
+	{
+		g_controller.instruction().ledOn();
+		g_controller.send();
+		digitalWrite(13, LOW);
+		delay(2);
+	}
+	ledOn != ledOn;
+
+	g_controller.ping();
+	delay(25);
+
 	uint16_t currentPos = 0;
 	bool ok = g_controller.read(Dynamixel::Address::PresentPosition, currentPos);
 	if(ok)
