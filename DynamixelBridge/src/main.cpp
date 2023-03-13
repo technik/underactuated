@@ -397,7 +397,7 @@ void setup()
 	Serial.begin(115200);
 	Serial1.begin(1000000);
 
-	g_controller.setId(4); // Need to set the id ahead of time
+	g_controller.setId(1); // Need to set the id ahead of time
 	g_controller.instruction().ledOn();
 	g_controller.send();
 	delay(2);
@@ -444,17 +444,18 @@ void loop()
 		g_controller.instruction().ledOff();
 		g_controller.send();
 		digitalWrite(13, HIGH);
-		delay(2);
+		delay(250);
 	}
 	else
 	{
 		g_controller.instruction().ledOn();
 		g_controller.send();
 		digitalWrite(13, LOW);
-		delay(2);
+		delay(250);
 	}
-	ledOn != ledOn;
+	ledOn = !ledOn;
 
+/*
 	g_controller.ping();
 	delay(25);
 
@@ -470,7 +471,7 @@ void loop()
 		Serial.println("error");
 	}
 	delay(500);
-	/*
+	
 	// Read serial message
 	g_pcMonitor.read(Serial, g_controller.m_packet);
 	if(g_pcMonitor.isReady())
