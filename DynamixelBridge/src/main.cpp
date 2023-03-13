@@ -202,21 +202,36 @@ namespace Dynamixel
 			setPayloadSize(sizeof(T)+1);
 		}
 
+<<<<<<< HEAD
+=======
+		void read(Address address, uint8_t byteCount)
+		{
+			m_opcode = (uint8_t)Instruction::Read;
+
+			m_payload[0] = (uint8_t)address;
+			m_payload[1] = byteCount;
+
+			setPayloadSize(2);
+		}
+
+>>>>>>> master
 		void setPayloadSize(uint8_t payloadSize)
 		{
 			m_length = payloadSize + 2;
 		}
+<<<<<<< HEAD
 	};
 
 	struct StatusPacket : Packet
 	{
 		Status getStatus() const { return (Status)m_opcode; }
+=======
+>>>>>>> master
 	};
 
-	#define DXSerial Serial1
-
-	class Controller
+	struct StatusPacket : Packet
 	{
+<<<<<<< HEAD
 	public:
 
 		void send()
@@ -246,6 +261,9 @@ namespace Dynamixel
 		}
 
 		Packet m_packet;
+=======
+		Status getStatus() const { return (Status)m_opcode; }
+>>>>>>> master
 	};
 
 	class Monitor
@@ -303,7 +321,7 @@ namespace Dynamixel
 			}
 			case State::Payload:
 			{
-				uint8_t* payloadPos = (uint8_t*)&packet.m_instruction;
+				uint8_t* payloadPos = &packet.m_opcode;
 				payloadPos[m_payloadPos] = c;
 				m_payloadPos++;
 				if(m_payloadPos == packet.m_length)
@@ -324,6 +342,76 @@ namespace Dynamixel
 			}
 		}
 	};
+
+	#define DXSerial Serial1
+
+	class Controller
+	{
+	public:
+		void send()
+		{
+			// Disable listening on this port
+			UCSR1B &= ~(1<<RXEN1);
+			// Header
+			DXSerial.write(0xff);
+			DXSerial.write(0xff);
+			DXSerial.write(m_packet.m_id);
+			// Length
+			DXSerial.write(m_packet.m_length);
+			// Instruction
+			DXSerial.write(uint8_t(m_packet.m_opcode));
+			// Payload
+			DXSerial.write(m_packet.m_payload, m_packet.m_length-2);
+			// Checksum
+			DXSerial.write(m_packet.computeChecksum());
+
+			delayMicroseconds(10); // Avoid transient noise before listening for a response
+
+			// Enable listening on this port again
+			UCSR1B |= (1<<RXEN1);
+		}
+
+		// Returns false on timeout
+		bool receive()
+		{
+			static constexpr uint32_t TimeOutMs = 5; 
+			auto t = millis();
+			Monitor monitor;
+			while(!monitor.isReady())
+			{
+				if(millis() - t > TimeOutMs)
+				{
+					return false; // Timeout
+				}
+				monitor.read(DXSerial, m_packet);
+			}
+
+			return true;
+		}
+
+		void setId(uint8_t id)
+		{
+			m_packet.m_id = id;
+		}
+
+		template<class T>
+		bool read(Address address, T& dst)
+		{
+			auto& instruction = *(InstructionPacket*)(&m_packet);
+			instruction.read(address, sizeof(T));
+			send();
+
+			if(receive())
+			{
+				memcpy(&dst, m_packet.m_payload, sizeof(T));
+				return true;
+			}
+
+			return false; // Didn't receive anything
+		}
+
+		Packet m_packet;
+	};
 }
 
 Dynamixel::Controller g_controller;
@@ -338,10 +426,10 @@ void setup()
 	Serial1.begin(1000000);
 
 	g_controller.setId(4); // Need to set the id ahead of time
-	g_controller.m_packet.ledOn();
-	g_controller.send();
-	g_controller.m_packet.enableTorque(true);
-	g_controller.send();
+	//g_controller.m_packet.ledOn();
+	//g_controller.send();
+	//g_controller.m_packet.enableTorque(true);
+	//g_controller.send();
 }
 
 unsigned long lastTick = 0;
@@ -378,6 +466,19 @@ CircularBuffer g_ringBuffer;
 
 void loop()
 {
+	uint16_t currentPos = 0;
+	bool ok = g_controller.read(Dynamixel::Address::PresentPosition, currentPos);
+	if(ok)
+	{
+		Serial.print("pos: ");
+		Serial.println(currentPos);
+	}
+	else
+	{
+		Serial.println("error");
+	}
+	delay(500);
+	/*
 	// Read serial message
 	g_pcMonitor.read(Serial, g_controller.m_packet);
 	if(g_pcMonitor.isReady())
@@ -413,4 +514,5 @@ void loop()
 		}
 		ledOn = !ledOn;
 	}
+	*/
 }
