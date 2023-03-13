@@ -33,10 +33,11 @@ typedef SerialLinux SerialBase;
 
 #endif // __linux__
 
+#ifdef _WIN32
 #include <Windows.h>
 #include <cstdint>
 
-#ifdef _WIN32
+
 class SerialWin32 {
 	public:
 		unsigned	write	(const void* _src, unsigned _nBytes);
@@ -63,5 +64,5 @@ class SerialWin32 {
 class SerialPort : public SerialBase
 {
 public:
-	SerialPort(const char* _port, unsigned _baudRate) : SerialBase(_port, _baurRate);
+	SerialPort(const char* _port, unsigned _baudRate) : SerialBase(_port, _baudRate){}
 };
