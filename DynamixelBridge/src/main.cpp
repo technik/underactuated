@@ -1,5 +1,4 @@
 #include <Arduino.h>
-//#include <ros.h>
 
 namespace Dynamixel
 {
@@ -43,8 +42,25 @@ namespace Dynamixel
 		uint16_t 	punch;
 	};
 
-	enum class RAMAddress : uint8_t
+	enum class Address : uint8_t
 	{
+		// EEPROM Addresses
+		ModelNumber = 0,
+		FirmwareVersion = 2,
+		Id,
+		BaudRate,
+		ReturnDelay,
+		CWAngleLimit,
+		CCWAngleLimit = 8,
+		TemperatureLimit = 11,
+		MinVoltage,
+		MaxVoltage,
+		MaxTorque,
+		StatusReturnLevel = 16,
+		AlarmLED,
+		Shutdown,
+
+		// RAM Addresses
 		TorqueEnable = 24,
 		LED,
 		CWComplianceMargin,
@@ -70,23 +86,30 @@ namespace Dynamixel
 		BulkRead = 0x92,
 	};
 
+	enum class Status : uint8_t
+	{
+		Success = 0,
+		InputVoltageError = 1,
+		AngleLimitError = 2,
+		OverheatingError = 4,
+		RangeError = 8,
+		ChecksumError = 16,
+		OverloadError = 32,
+		InstructionError = 64
+	};
+
 	struct Packet
 	{
 		static constexpr uint8_t cMaxPayload = sizeof(RAMControlTable) + 2; 
 		uint8_t m_id;
 		uint8_t m_length;
-		Instruction m_instruction;
+		uint8_t m_opcode;
 		uint8_t m_payload[cMaxPayload];
 		uint8_t m_checksum;
 
-		void setPayloadSize(uint8_t payloadSize)
-		{
-			m_length = payloadSize + 2;
-		}
-
 		uint8_t computeChecksum()
 		{
-			uint8_t checksum = m_id + m_length + (uint8_t)m_instruction;
+			uint8_t checksum = m_id + m_length + m_opcode;
 			
 			for(int  i = 0; i < m_length-1; ++i)
 			{
@@ -105,41 +128,70 @@ namespace Dynamixel
 		{
 			return m_checksum == computeChecksum();
 		}
+	};
 
+	struct InstructionPacket : Packet
+	{
 		void ledOn()
 		{
-			setRegister8(RAMAddress::LED, 1);
+			setRegister8(Address::LED, 1);
 		}
 
 		void ledOff()
 		{
-			setRegister8(RAMAddress::LED, 0);
+			setRegister8(Address::LED, 0);
+		}
+
+		void setMaxTorque(uint16_t maxTorque)
+		{
+			setRegister16(Address::MaxTorque, maxTorque);
 		}
 
 		void enableTorque(bool on)
 		{
-			setRegister8(RAMAddress::TorqueEnable, on);
+			setRegister8(Address::TorqueEnable, on);
+		}
+
+		void setTorqueLimit(uint16_t limit)
+		{
+			setRegister16(Address::TorqueLimit, limit);
+		}
+
+		void setCWAngleLimit(uint16_t limit)
+		{
+			setRegister16(Address::CWAngleLimit, limit);
+		}
+
+		void setCCWAngleLimit(uint16_t limit)
+		{
+			setRegister16(Address::CCWAngleLimit, limit);
+		}
+
+		// When in WheelMode: 0-1023 is positive torque, 1024-2047 is negative torque
+		void setMovingSpeed(uint16_t speed)
+		{
+			setRegister16(Address::MovingSpeed, speed);
 		}
 
 		void setGoalPos(uint16_t pos)
 		{
-			setRegister16(RAMAddress::GoalPosition, pos);
+			setRegister16(Address::GoalPosition, pos);
 		}
 
-		void setRegister8(RAMAddress address, uint8_t x)
+		void setRegister8(Address address, uint8_t x)
 		{
 			write(address, &x);
 		}
 
-		void setRegister16(RAMAddress address, uint16_t x)
+		void setRegister16(Address address, uint16_t x)
 		{
 			write(address, &x);
 		}
 
 		template<class T>
-		void write(RAMAddress address, const T* data)
+		void write(Address address, const T* data)
 		{
-			m_instruction = Instruction::Write;
+			m_opcode = (uint8_t)Instruction::Write;
 
 			// Set payload
 			m_payload[0] = (uint8_t)address;
@@ -149,45 +201,26 @@ namespace Dynamixel
 			
 			setPayloadSize(sizeof(T)+1);
 		}
+
+		void read(Address address, uint8_t byteCount)
+		{
+			m_opcode = (uint8_t)Instruction::Read;
+
+			m_payload[0] = (uint8_t)address;
+			m_payload[1] = byteCount;
+
+			setPayloadSize(2);
+		}
+
+		void setPayloadSize(uint8_t payloadSize)
+		{
+			m_length = payloadSize + 2;
+		}
 	};
 
-	#define DXSerial Serial1
-
-	class Controller
+	struct StatusPacket : Packet
 	{
-	public:
-
-		void send()
-		{
-			// Disable listening on this port
-			UCSR1B &= ~(1<<RXEN1);
-			// Header
-			DXSerial.write(0xff);
-			DXSerial.write(0xff);
-			DXSerial.write(m_packet.m_id);
-			// Length
-			DXSerial.write(m_packet.m_length);
-			// Instruction
-			DXSerial.write(uint8_t(m_packet.m_instruction));
-			// Payload
-			DXSerial.write(m_packet.m_payload, m_packet.m_length-2);
-			// Checksum
-			DXSerial.write(m_packet.computeChecksum());
-
-			delayMicroseconds(10); // Avoid transient noise before listening for a response
-
-			// Enable listening on this port again
-			UCSR1B |= (1<<RXEN1);
-
-			//delay(2); // Ignore the response message
-		}
-
-		void setId(uint8_t id)
-		{
-			m_packet.m_id = id;
-		}
-
-		Packet m_packet;
+		Status getStatus() const { return (Status)m_opcode; }
 	};
 
 	class Monitor
@@ -245,7 +278,7 @@ namespace Dynamixel
 			}
 			case State::Payload:
 			{
-				uint8_t* payloadPos = (uint8_t*)&packet.m_instruction;
+				uint8_t* payloadPos = &packet.m_opcode;
 				payloadPos[m_payloadPos] = c;
 				m_payloadPos++;
 				if(m_payloadPos == packet.m_length)
@@ -266,6 +299,76 @@ namespace Dynamixel
 			}
 		}
 	};
+
+	#define DXSerial Serial1
+
+	class Controller
+	{
+	public:
+		void send()
+		{
+			// Disable listening on this port
+			UCSR1B &= ~(1<<RXEN1);
+			// Header
+			DXSerial.write(0xff);
+			DXSerial.write(0xff);
+			DXSerial.write(m_packet.m_id);
+			// Length
+			DXSerial.write(m_packet.m_length);
+			// Instruction
+			DXSerial.write(uint8_t(m_packet.m_opcode));
+			// Payload
+			DXSerial.write(m_packet.m_payload, m_packet.m_length-2);
+			// Checksum
+			DXSerial.write(m_packet.computeChecksum());
+
+			delayMicroseconds(10); // Avoid transient noise before listening for a response
+
+			// Enable listening on this port again
+			UCSR1B |= (1<<RXEN1);
+		}
+
+		// Returns false on timeout
+		bool receive()
+		{
+			static constexpr uint32_t TimeOutMs = 5; 
+			auto t = millis();
+			Monitor monitor;
+			while(!monitor.isReady())
+			{
+				if(millis() - t > TimeOutMs)
+				{
+					return false; // Timeout
+				}
+				monitor.read(DXSerial, m_packet);
+			}
+
+			return true;
+		}
+
+		void setId(uint8_t id)
+		{
+			m_packet.m_id = id;
+		}
+
+		template<class T>
+		bool read(Address address, T& dst)
+		{
+			auto& instruction = *(InstructionPacket*)(&m_packet);
+			instruction.read(address, sizeof(T));
+			send();
+
+			if(receive())
+			{
+				memcpy(&dst, m_packet.m_payload, sizeof(T));
+				return true;
+			}
+
+			return false; // Didn't receive anything
+		}
+
+		Packet m_packet;
+	};
 }
 
 Dynamixel::Controller g_controller;
@@ -280,10 +383,10 @@ void setup()
 	Serial1.begin(1000000);
 
 	g_controller.setId(4); // Need to set the id ahead of time
-	g_controller.m_packet.ledOn();
-	g_controller.send();
-	g_controller.m_packet.enableTorque(true);
-	g_controller.send();
+	//g_controller.m_packet.ledOn();
+	//g_controller.send();
+	//g_controller.m_packet.enableTorque(true);
+	//g_controller.send();
 }
 
 unsigned long lastTick = 0;
@@ -320,6 +423,19 @@ CircularBuffer g_ringBuffer;
 
 void loop()
 {
+	uint16_t currentPos = 0;
+	bool ok = g_controller.read(Dynamixel::Address::PresentPosition, currentPos);
+	if(ok)
+	{
+		Serial.print("pos: ");
+		Serial.println(currentPos);
+	}
+	else
+	{
+		Serial.println("error");
+	}
+	delay(500);
+	/*
 	// Read serial message
 	g_pcMonitor.read(Serial, g_controller.m_packet);
 	if(g_pcMonitor.isReady())
@@ -340,7 +456,7 @@ void loop()
 	}
 	// Tick
 	auto t = millis();
-	if(t - lastTick > 500)
+	if(t - lastTick)
 	{
 		lastTick = t;
 		if(ledOn)
@@ -355,4 +471,5 @@ void loop()
 		}
 		ledOn = !ledOn;
 	}
+	*/
 }
