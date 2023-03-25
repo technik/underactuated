@@ -61,7 +61,13 @@ public:
   float ReadRadians()
   {
     auto steps = int(ReadRaw() - m_offset);
-    return stepToRad * steps;
+    auto angle = stepToRad * steps;
+    if (angle < -PI)
+      angle += 2*PI;
+    if (angle > PI)
+      angle -= 2*PI;
+    
+    return angle;
   }
 
   AMS_5600 m_ams5600;
@@ -69,6 +75,36 @@ private:
   static inline constexpr float stepToRad = 2*PI / 4095.f;
   uint16_t m_offset;
 } g_Sensor;
+
+class PD
+{
+  public:
+    float U(const float angle, const int Hz){
+      auto error = angle-PI;
+      if (angle<0)
+        error = PI+angle;
+
+      const auto dError = (error-errorPrev)*Hz;
+      auto U = -Kp*error + Kd*dError;
+      errorPrev = error;
+
+      return U;
+    }
+    bool inLinearRegion(float angle)
+    {
+      return abs(angle) > PI-linearRegion;
+    }
+    void reset()
+    {
+      errorPrev = 0;
+    }
+  private:
+    static constexpr float linearRegion = 15*PI/180.f; // +- 5 deg at the top is linear enough.
+    static constexpr float Kp = 400.0;
+    static constexpr float Kd = 0.0;
+
+    float errorPrev = 0;
+};
 
 const float Hz = 20;
 const float dTime = 1/Hz;
@@ -114,6 +150,7 @@ float energy(float angle, float vel)
 }
 
 bool g_ControlEnabled = false;
+PD pd;
 
 void loop()
 {
@@ -150,18 +187,35 @@ void loop()
 
   if(g_ControlEnabled)
   {
-    constexpr float EnergyGoal = 2*m*g*l;
-    auto curEnergy = energy(angle, vel);
-
-    bool sign = 0;
-    if(curEnergy < EnergyGoal)
+    if (!pd.inLinearRegion(angle))
     {
-      sign = vel > 0;
-      PendulumMotor::SetPWM(sign, 100);
+      pd.reset();
+      constexpr float EnergyGoal = 2*m*g*l;
+      auto curEnergy = energy(angle, vel);
+
+      bool sign = 0;
+      if(curEnergy < EnergyGoal)
+      {
+        sign = vel > 0;
+        PendulumMotor::SetPWM(sign, 100);
+      }
+      else
+      {
+        g_Motor.Disable();
+      }
+
+      // Debugging only:
+      // Serial.print(0);
+      // Serial.print(",");
+      // g_Motor.Disable();
     }
     else
     {
-      g_Motor.Disable();
+      const auto u = pd.U(angle, Hz);
+      bool sign = u > 0;
+      PendulumMotor::SetPWM(sign, constrain(abs(u), 20, 200));
+      Serial.print(u);
+      Serial.print(",");      
     }
   }
 
