@@ -1,6 +1,8 @@
 #include <Wire.h>
 #include <AS5600.h>
 
+const bool DEBUG_PRINTS = false;
+
 template<int PinA, int PinB>
 class PWMMotor
 {
@@ -205,29 +207,29 @@ void loop()
       {
         g_Motor.Disable();
       }
-
-      // Debugging only:
-      // Serial.print(0);
-      // Serial.print(",");
-      // g_Motor.Disable();
     }
     else
     {
       const auto u = pd.U(angle, Hz);
       bool sign = u > 0;
       PendulumMotor::SetPWM(sign, constrain(abs(u), 20, 200));
-      // Serial.print(u);
-      // Serial.print(",");      
+      if (DEBUG_PRINTS)
+      {
+        Serial.print(u);
+        Serial.print(",");
+      }     
     }
   }
-
-  // Serial.print(angle);
-  // Serial.print(",");
-  // Serial.print(potentialEnergy(angle));
-  // Serial.print(",");
-  // Serial.print(kineticEnergy(vel));
-  // Serial.print(",");
-  // Serial.println(energy(angle,vel));
+  if (DEBUG_PRINTS)
+  {
+    Serial.print(angle);
+    Serial.print(",");
+    Serial.print(potentialEnergy(angle));
+    Serial.print(",");
+    Serial.print(kineticEnergy(vel));
+    Serial.print(",");
+    Serial.println(energy(angle,vel));
+  }
 
   while(millis()-t0 < 20)
   {}
