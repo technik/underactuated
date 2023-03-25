@@ -85,7 +85,7 @@ class PD
         error = PI+angle;
 
       const auto dError = (error-errorPrev)*Hz;
-      auto U = -Kp*error + Kd*dError;
+      auto U = -Kp*error - Kd*dError;
       errorPrev = error;
 
       return U;
@@ -100,13 +100,13 @@ class PD
     }
   private:
     static constexpr float linearRegion = 15*PI/180.f; // +- 5 deg at the top is linear enough.
-    static constexpr float Kp = 400.0;
-    static constexpr float Kd = 0.0;
+    static constexpr float Kp = 750.0;
+    static constexpr float Kd = 100.0;
 
     float errorPrev = 0;
 };
 
-const float Hz = 20;
+const float Hz = 50;
 const float dTime = 1/Hz;
 float angle = 0;
 float prevAngle = 0;
@@ -194,10 +194,12 @@ void loop()
       auto curEnergy = energy(angle, vel);
 
       bool sign = 0;
-      if(curEnergy < EnergyGoal)
+      if(curEnergy < EnergyGoal*0.97)
       {
+        const float energyError = abs(curEnergy-EnergyGoal);
+        const float k = 5*100/EnergyGoal;
         sign = vel > 0;
-        PendulumMotor::SetPWM(sign, 100);
+        PendulumMotor::SetPWM(sign, constrain(k*energyError, 0, 200));
       }
       else
       {
@@ -214,19 +216,19 @@ void loop()
       const auto u = pd.U(angle, Hz);
       bool sign = u > 0;
       PendulumMotor::SetPWM(sign, constrain(abs(u), 20, 200));
-      Serial.print(u);
-      Serial.print(",");      
+      // Serial.print(u);
+      // Serial.print(",");      
     }
   }
 
-  Serial.print(angle);
-  Serial.print(",");
-  Serial.print(potentialEnergy(angle));
-  Serial.print(",");
-  Serial.print(kineticEnergy(vel));
-  Serial.print(",");
-  Serial.println(energy(angle,vel));
+  // Serial.print(angle);
+  // Serial.print(",");
+  // Serial.print(potentialEnergy(angle));
+  // Serial.print(",");
+  // Serial.print(kineticEnergy(vel));
+  // Serial.print(",");
+  // Serial.println(energy(angle,vel));
 
-  while(millis()-t0 < 50)
+  while(millis()-t0 < 20)
   {}
 }
