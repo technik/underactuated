@@ -1,5 +1,8 @@
 #include <Arduino.h>
 
+constexpr uint32_t BridgeEnRx = 2;
+constexpr uint32_t BridgeEnTx = 3;
+
 namespace Dynamixel
 {
 	struct EEPROMControlTable
@@ -315,7 +318,7 @@ namespace Dynamixel
 		void send()
 		{
 			// Disable listening on this port
-			UCSR1B &= ~(1<<RXEN1);
+			setBridgeTx();
 			// Header
 			DXSerial.write(0xff);
 			DXSerial.write(0xff);
@@ -332,7 +335,19 @@ namespace Dynamixel
 			delayMicroseconds(10); // Avoid transient noise before listening for a response
 
 			// Enable listening on this port again
-			UCSR1B |= (1<<RXEN1);
+			setBridgeRx();
+		}
+
+		void setBridgeTx()
+		{
+			digitalWrite(BridgeEnTx, HIGH);
+			digitalWrite(BridgeEnRx, LOW);
+		}
+
+		void setBridgeRx()
+		{
+			digitalWrite(BridgeEnTx, LOW);
+			digitalWrite(BridgeEnRx, HIGH);
 		}
 
 		// Returns false on timeout
@@ -389,22 +404,6 @@ namespace Dynamixel
 Dynamixel::Controller g_controller;
 Dynamixel::Monitor g_pcMonitor;
 
-void setup()
-{
-	// put your setup code here, to run once:
-	pinMode(13, OUTPUT);
-
-	Serial.begin(115200);
-	Serial1.begin(1000000);
-
-	g_controller.setId(1); // Need to set the id ahead of time
-	g_controller.instruction().ledOn();
-	g_controller.send();
-	delay(2);
-	//g_controller.m_packet.enableTorque(true);
-	//g_controller.send();
-}
-
 unsigned long lastTick = 0;
 bool ledOn = false;
 
@@ -434,6 +433,22 @@ struct CircularBuffer
 		return c;
 	}
 };
+
+void setup()
+{
+	// put your setup code here, to run once:
+	pinMode(13, OUTPUT);
+
+	Serial.begin(115200);
+	Serial1.begin(1000000);
+
+	g_controller.setId(1); // Need to set the id ahead of time
+	g_controller.instruction().ledOn();
+	g_controller.send();
+	delay(2);
+	//g_controller.m_packet.enableTorque(true);
+	//g_controller.send();
+}
 
 CircularBuffer g_ringBuffer;
 
