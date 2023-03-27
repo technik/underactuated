@@ -42,6 +42,7 @@ public:
   {
     return m_ams5600.detectMagnet() == 1;
   }
+
   void Calibrate()
   {
     m_offset = ReadRaw();
@@ -63,10 +64,10 @@ public:
     return stepToRad * steps;
   }
 
-private:
-  static inline constexpr float stepToRad = PI / 4095.f;
-  uint16_t m_offset;
   AMS_5600 m_ams5600;
+private:
+  static inline constexpr float stepToRad = 2*PI / 4095.f;
+  uint16_t m_offset;
 } g_Sensor;
 
 const float Hz = 20;
@@ -76,22 +77,24 @@ float prevAngle = 0;
 float vel = 0;
 
 // Pendulum Params
-const float m = 0.070;
-const float l = 0.280;
-const float g = 9.81;
+constexpr float m = 0.070;
+constexpr float l = 0.280;
+constexpr float g = 9.81;
 
 void setup()
 {
   Serial.begin(115200);
   Wire.begin();
 
-  g_Sensor.Calibrate();
-  
   // Setup AS5600
-  while(g_Sensor.Ready()){  
+  //while(g_Sensor.m_ams5600.detectMagnet() != 1)//.Ready())
+  while(!g_Sensor.Ready())
+  {  
     Serial.println("Can not detect magnet");
     delay(1000);
   }
+  
+  g_Sensor.Calibrate();
   Serial.println("Ready");
 }
 
@@ -138,20 +141,32 @@ void loop()
 
   prevAngle = angle;
   angle = g_Sensor.ReadRadians();
+  vel = (angle-prevAngle);
+  if (vel>PI)
+    vel -= 2*PI;
+  else if (vel < -PI)
+    vel += 2*PI;
+  vel *= Hz;
 
   if(g_ControlEnabled)
   {
-    PendulumMotor::SetPWM(false, 100);
-    vel = (angle-prevAngle);
-    if (vel>PI)
-      vel -= 2*PI;
-    else if (vel < -PI)
-      vel += 2*PI;
-    vel *= Hz;
+    constexpr float EnergyGoal = 2*m*g*l;
+    auto curEnergy = energy(angle, vel);
+
+    bool sign = 0;
+    if(curEnergy < EnergyGoal)
+    {
+      sign = vel > 0;
+      PendulumMotor::SetPWM(sign, 100);
+    }
+    else
+    {
+      g_Motor.Disable();
+    }
   }
 
-  //Serial.print(angle);
-  //Serial.print(",");
+  Serial.print(angle);
+  Serial.print(",");
   Serial.print(potentialEnergy(angle));
   Serial.print(",");
   Serial.print(kineticEnergy(vel));
