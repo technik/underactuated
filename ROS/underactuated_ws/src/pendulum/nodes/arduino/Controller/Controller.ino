@@ -1,13 +1,74 @@
 #include <Wire.h>
 #include <AS5600.h>
 
-AMS_5600 ams5600;
+template<int PinA, int PinB>
+class PWMMotor
+{
+  public:
+    PWMMotor()
+    {
+      // Configure pins
+      pinMode(PinA, OUTPUT);
+      pinMode(PinB, OUTPUT);
+
+      // Set initial state
+      digitalWrite(PinA, LOW);
+      digitalWrite(PinB, LOW);
+    }
+
+    static void SetPWM(bool dir, uint8_t duty)
+    {
+      analogWrite(PinA, dir ? duty : 0);
+      analogWrite(PinB, dir ? 0 : duty);
+    }
+
+    void Disable()
+    {
+      digitalWrite(PinA, LOW);
+      digitalWrite(PinB, LOW);
+    }
+};
 
 // Motor connections
-int in1 = 5;
-int in2 = 6;
+constexpr int motorPin1 = 5;
+constexpr int motorPin2 = 6;
+using PendulumMotor = PWMMotor<motorPin1, motorPin2>;
+PendulumMotor g_Motor;
 
-const float CALIB_0_OFFSET = 295.05;
+class AngleSensor
+{
+public:
+  bool Ready()
+  {
+    return m_ams5600.detectMagnet() == 1;
+  }
+  void Calibrate()
+  {
+    m_offset = ReadRaw();
+  }
+
+  float GetOffsetRadians() const
+  {
+    return stepToRad * m_offset;
+  }
+
+  uint16_t ReadRaw()
+  {
+    return m_ams5600.getRawAngle();
+  }
+
+  float ReadRadians()
+  {
+    auto steps = int(ReadRaw() - m_offset);
+    return stepToRad * steps;
+  }
+
+private:
+  static inline constexpr float stepToRad = PI / 4095.f;
+  uint16_t m_offset;
+  AMS_5600 m_ams5600;
+} g_Sensor;
+
 const float Hz = 20;
 const float dTime = 1/Hz;
 float angle = 0;
@@ -15,54 +76,23 @@ float prevAngle = 0;
 float vel = 0;
 
 // Pendulum Params
-float m = 0.070;
-float l = 0.280;
-float g = 9.81;
-
+const float m = 0.070;
+const float l = 0.280;
+const float g = 9.81;
 
 void setup()
 {
   Serial.begin(115200);
   Wire.begin();
 
-  // Set up L298N
-  // Set all the motor control pins to outputs
-  pinMode(in1, OUTPUT);
-  pinMode(in2, OUTPUT);
-  
-  // Turn off motors - Initial state
-  digitalWrite(in1, LOW);
-  digitalWrite(in2, LOW);
+  g_Sensor.Calibrate();
   
   // Setup AS5600
-  while(ams5600.detectMagnet() != 1 ){  
+  while(g_Sensor.Ready()){  
     Serial.println("Can not detect magnet");
     delay(1000);
   }
-  Serial.print("Current Magnitude: ");
-  Serial.println(ams5600.getMagnitude());
-
-}
-
-// This function lets you control spinning direction of motors
-void setMotorVoltage(bool dir, uint8_t speed) {
-	// Set motors to maximum speed
-	// For PWM maximum possible values are 0 to 255
-
-	// Turn on motor A
-	analogWrite(in1, dir ? speed : 0);
-	analogWrite(in2, dir ? 0 : speed);
-}
-
-float convertRawAngleToDegrees(word newAngle)
-{
-  /* Raw data reports 0 - 4095 segments, which is 0.087890625 of a degree */
-  return newAngle * 0.087890625 - CALIB_0_OFFSET;
-}
-
-float deg2rad(float angle)
-{
-  return PI*angle/180;
+  Serial.println("Ready");
 }
 
 float potentialEnergy(float angle)
@@ -80,26 +110,54 @@ float energy(float angle, float vel)
   return potentialEnergy(angle) + kineticEnergy(vel);
 }
 
+bool g_ControlEnabled = false;
+
 void loop()
 {
     long int t0 = millis();
 
-    setMotorVoltage(false,100);
-    prevAngle = angle;
-    angle = deg2rad(convertRawAngleToDegrees(ams5600.getRawAngle()));
+  // Poll control messages
+  if(Serial.available())
+  {
+    auto c = Serial.read();
+    switch(c)
+    {
+      case '1': // Turn on
+        g_ControlEnabled = true;
+      break;
+      case '0': // Turn off control
+        g_ControlEnabled = false;
+        g_Motor.Disable();
+      break;
+      case 'c': // Calibrate 0
+        g_Sensor.Calibrate();
+        Serial.println(g_Sensor.GetOffsetRadians());
+      break;
+    }
+  }
+
+  prevAngle = angle;
+  angle = g_Sensor.ReadRadians();
+
+  if(g_ControlEnabled)
+  {
+    PendulumMotor::SetPWM(false, 100);
     vel = (angle-prevAngle);
     if (vel>PI)
       vel -= 2*PI;
     else if (vel < -PI)
       vel += 2*PI;
     vel *= Hz;
-    // Serial.print(energy(angle, vel));
-    Serial.print(potentialEnergy(angle));
-    Serial.print(",");
-    Serial.print(kineticEnergy(vel));
-    Serial.print(",");
-    Serial.println(energy(angle,vel));
+  }
 
-    while(millis()-t0 < 50)
-    {}
+  //Serial.print(angle);
+  //Serial.print(",");
+  Serial.print(potentialEnergy(angle));
+  Serial.print(",");
+  Serial.print(kineticEnergy(vel));
+  Serial.print(",");
+  Serial.println(energy(angle,vel));
+
+  while(millis()-t0 < 50)
+  {}
 }
