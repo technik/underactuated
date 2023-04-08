@@ -8,11 +8,62 @@
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
 
+struct BLDCController
+{
+    HBridge<2,9> m_ChannelA;
+    HBridge<3,10> m_ChannelB;
+    HBridge<4,11> m_ChannelC;
+
+    //
+    void Init()
+    {}
+
+    void Write(int16_t speed)
+    {
+        // Step once
+        auto s = steps[m_nextStep];
+        if(speed > 0)
+        {
+            m_nextStep = (m_nextStep+1)%6;
+        }
+        else{
+            m_nextStep = (m_nextStep+5)%6;
+        }
+
+        digitalWrite(2,  s&1 ? HIGH : LOW);
+        analogWrite(9,  s&2 ? abs(speed) : 0);
+        digitalWrite(3,  s&4 ? HIGH : LOW);
+        analogWrite(10, s&8 ? abs(speed) : 0);
+        digitalWrite(4,  s&16 ? HIGH : LOW);
+        analogWrite(11, s&32 ? abs(speed) : 0);
+        //m_ChannelA.Write(s&1 ? (s&2 ? speed : -speed) : 0);
+        //m_ChannelB.Write(s&4 ? (s&8 ? speed : -speed) : 0);
+        //m_ChannelC.Write(s&16 ? (s&32 ? speed : -speed) : 0);
+    }
+
+    void Disable()
+    {
+        m_ChannelA.Disable();
+        m_ChannelB.Disable();
+        m_ChannelC.Disable();
+    }
+
+    uint8_t steps[6] = 
+    { // For each channel (enable, dir)
+        0b100011,
+        0b101100,
+        0b001110,
+        0b110010,
+        0b111000,
+        0b001011
+    };
+
+    uint8_t m_nextStep;
+} g_Motor;
+
 // Hardware defintions
-using MotorController = HBridge<9, 11>;
 
 Adafruit_MPU6050 g_imu;
-MotorController g_Motor;
 
 void demoIMU()
 {
@@ -50,13 +101,14 @@ void setup() {
     Serial.begin(115200);
 
     // Config IMU
-    while(!g_imu.begin())
-    {
-        Serial.println("Can't init IMU");
-        delay(1000);
-    }
-
-    Serial.println("MPU6050 Found!");
+    //while(!g_imu.begin())
+    //{
+    //    Serial.println("Can't init IMU");
+    //    delay(1000);
+    //}
+//
+    //Serial.println("MPU6050 Found!");
+    Serial.println("Ready");
 
     g_imu.setAccelerometerRange(MPU6050_RANGE_8_G);
     g_imu.setGyroRange(MPU6050_RANGE_500_DEG);
@@ -194,6 +246,8 @@ void recomputeFrame()
     g_offBalance = cross(g_balanceDown, rotationAxis);
 }
 
+int g_speed = 0;
+
 void digestMessage()
 {
     auto& msg = g_pcConnection.m_Message;
@@ -208,15 +262,16 @@ void digestMessage()
         {
             g_Motor.Disable();
             g_State = State::standby;
+            g_speed = 0;
             break;
         }
         case 't':
         case 'T':
         {
-            auto torque = atoi((const char*)&msg[1]);
+            g_speed = atoi((const char*)&msg[1]);
             Serial.print("Torque: ");
-            Serial.println(torque);
-            g_Motor.Write(torque);
+            Serial.println(g_speed);
+            g_Motor.Write(g_speed);
             g_State = State::torqueTest;
             break;
         }
@@ -271,5 +326,10 @@ void loop()
         Serial.print(", Side: ");
         Serial.println(side);
         delay(200);
+    }
+    else if(g_State == State::torqueTest)
+    {
+        g_Motor.Write(g_speed);
+        delay(5);
     }
 }
