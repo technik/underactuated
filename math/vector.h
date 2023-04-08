@@ -19,8 +19,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
-#include <initializer_list>
 #include <cmath>
+#ifndef AVR
+#include <initializer_list>
+#endif // AVR
+
+#ifdef AVR
+#define FORCE_INLINE inline
+#else
+#define FORCE_INLINE __forceinline
+#endif
 
 namespace math
 {
@@ -29,6 +37,8 @@ namespace math
 	{
 	public:
 		Vector() = default;
+
+#ifndef AVR
 		Vector(std::initializer_list<T> il)
 		{
 			auto iter = il.begin();
@@ -39,6 +49,7 @@ namespace math
 			for(auto i = 0; i < n; ++i)
 				m[i] = t;
 		}
+#endif // AVR
 		constexpr Vector(T x, T y) : m {x,y} {}
 		constexpr Vector(T x, T y, T z) : m {x,y,z} {}
 		constexpr Vector(T x, T y, T z, T w) : m {x,y,z,w} {}
@@ -267,7 +278,7 @@ namespace math
 	//---------------------------------------------------------------------------------------------
 	// Inline methods
 	//---------------------------------------------------------------------------------------------
-	template<class T, int n> auto dot(const Vector<T,n>& a, const Vector<T,n>& b)
+	template<class T, int n> auto dot(const Vector<T,n>& a, const Vector<T,n>& b) -> T
 	{
 		auto d = T(0);
 		for(int i = 0; i < n; ++i)
@@ -286,11 +297,12 @@ namespace math
 	}
 
 	template<class T, int n>
-	auto reflect(const Vector<T,n>& v, const Vector<T,n>& normal)
+	auto reflect(const Vector<T,n>& v, const Vector<T,n>& normal) -> Vector<T,n>
 	{
 		return v - 2 * dot(v, normal) * normal;
 	}
 
+#ifndef AVR
 	template<class T, int n>
 	auto min(const Vector<T,n>& a, const Vector<T,n>& b)
 	{
@@ -317,39 +329,40 @@ namespace math
             res[i] = std::abs(a[i]);
         return res;
     }
+#endif // AVR
 
 	template<class T, int n>
 	constexpr T Vector<T,n>::sqNorm() const {
 		return dot(*this, *this);
 	}
 
-	template<class T, int n> auto normalize(const Vector<T,n>& v)
+	template<class T, int n> auto normalize(const Vector<T,n>& v) -> Vector<T,n>
 	{
 		return v * (1/v.norm());
 	}
 
 	// Vec3f specializations
-	__forceinline Vector<float, 3> operator+(const Vector<float, 3>& a, const Vector<float, 3>& b)
+	FORCE_INLINE Vector<float, 3> operator+(const Vector<float, 3>& a, const Vector<float, 3>& b)
 	{
 		return Vector<float, 3>(a.x() + b.x(), a.y() + b.y(), a.z() + b.z());
 	}
 
-	__forceinline Vector<float, 3> operator-(const Vector<float, 3>& a, const Vector<float, 3>& b)
+	FORCE_INLINE Vector<float, 3> operator-(const Vector<float, 3>& a, const Vector<float, 3>& b)
 	{
 		return Vector<float, 3>(a.x() - b.x(), a.y() - b.y(), a.z() - b.z());
 	}
 
-	__forceinline Vector<float, 3> operator*(const Vector<float, 3>& a, const Vector<float, 3>& b)
+	FORCE_INLINE Vector<float, 3> operator*(const Vector<float, 3>& a, const Vector<float, 3>& b)
 	{
 		return Vector<float, 3>(a.x() * b.x(), a.y() * b.y(), a.z() * b.z());
 	}
 
-	__forceinline Vector<float, 3> operator*(const Vector<float, 3>& a, float b)
+	FORCE_INLINE Vector<float, 3> operator*(const Vector<float, 3>& a, float b)
 	{
 		return Vector<float, 3>(a.x() * b, a.y() * b, a.z() * b);
 	}
 
-	__forceinline Vector<float, 3> operator/(const Vector<float, 3>& a, float b)
+	FORCE_INLINE Vector<float, 3> operator/(const Vector<float, 3>& a, float b)
 	{
 		auto rcp = 1.f / b;
 		return Vector<float, 3>(a.x() * rcp, a.y() * rcp, a.z() * rcp);

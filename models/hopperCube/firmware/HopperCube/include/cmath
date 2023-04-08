@@ -1,0 +1,9 @@
+#pragma once
+
+#include <math.h>
+
+namespace std {
+
+	inline float sqrt(float x) { return ::sqrt(x); }
+
+}	// namespace std
