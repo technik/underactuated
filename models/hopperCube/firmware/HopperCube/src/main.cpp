@@ -10,42 +10,42 @@
 
 struct BLDCController
 {
-    HBridge<2,9> m_ChannelA;
-    HBridge<3,10> m_ChannelB;
-    HBridge<4,11> m_ChannelC;
-
-    //
+    static constexpr int dirA = 2;
+    static constexpr int dirB = 3;
+    static constexpr int dirC = 4;
+    static constexpr int enA = 9;
+    static constexpr int enB = 10;
+    static constexpr int enC = 11;
+    
     void Init()
-    {}
-
-    void Write(int16_t speed)
     {
-        // Step once
-        auto s = steps[m_nextStep];
-        if(speed > 0)
-        {
-            m_nextStep = (m_nextStep+1)%6;
-        }
-        else{
-            m_nextStep = (m_nextStep+5)%6;
-        }
+        Disable();
+    }
 
-        digitalWrite(2,  s&1 ? HIGH : LOW);
-        analogWrite(9,  s&2 ? abs(speed) : 0);
-        digitalWrite(3,  s&4 ? HIGH : LOW);
-        analogWrite(10, s&8 ? abs(speed) : 0);
-        digitalWrite(4,  s&16 ? HIGH : LOW);
-        analogWrite(11, s&32 ? abs(speed) : 0);
-        //m_ChannelA.Write(s&1 ? (s&2 ? speed : -speed) : 0);
-        //m_ChannelB.Write(s&4 ? (s&8 ? speed : -speed) : 0);
-        //m_ChannelC.Write(s&16 ? (s&32 ? speed : -speed) : 0);
+    void SetAngle(float t, int16_t speed)
+    {
+        // Clear all channels to avoid spikes
+        Disable();
+        t *= 2*PI;
+        const float phaseA = cos(t + 0*PI/3) * speed;
+        const float phaseB = cos(t + 2*PI/3) * speed;
+        const float phaseC = cos(t + 4*PI/3) * speed;
+        digitalWrite(dirA, phaseA > 0 ? HIGH : LOW);
+        digitalWrite(dirB, phaseB > 0 ? HIGH : LOW);
+        digitalWrite(dirC, phaseC > 0 ? HIGH : LOW);
+        analogWrite(enA, abs(phaseA));
+        analogWrite(enB, abs(phaseB));
+        analogWrite(enC, abs(phaseC));
     }
 
     void Disable()
     {
-        m_ChannelA.Disable();
-        m_ChannelB.Disable();
-        m_ChannelC.Disable();
+        digitalWrite(enA, LOW);
+        digitalWrite(enB, LOW);
+        digitalWrite(enC, LOW);
+        //m_ChannelA.Disable();
+        //m_ChannelB.Disable();
+        //m_ChannelC.Disable();
     }
 
     uint8_t steps[6] = 
@@ -99,6 +99,7 @@ void demoIMU()
 void setup() {
     // Config serial port
     Serial.begin(115200);
+    g_Motor.Init();
 
     // Config IMU
     //while(!g_imu.begin())
@@ -108,7 +109,10 @@ void setup() {
     //}
 //
     //Serial.println("MPU6050 Found!");
-    Serial.println("Ready");
+    Serial.println("Calibrating motor");
+
+    g_Motor.SetAngle(0, 50);
+    delay(500);
 
     g_imu.setAccelerometerRange(MPU6050_RANGE_8_G);
     g_imu.setGyroRange(MPU6050_RANGE_500_DEG);
@@ -271,8 +275,6 @@ void digestMessage()
             g_speed = atoi((const char*)&msg[1]);
             Serial.print("Torque: ");
             Serial.println(g_speed);
-            g_Motor.Write(g_speed);
-            g_State = State::torqueTest;
             break;
         }
         case 'A':
@@ -293,6 +295,16 @@ void digestMessage()
             Serial.println("Frame ready");
             break;
         }
+        case 'p':
+        {
+            int pos = atoi((const char*)&msg[1]);
+            Serial.print("angle: ");
+            Serial.println(pos);
+            float angle = float(pos)/100.f;
+            angle = max(0.f, angle);
+            angle = min(angle, 1.f);
+            g_Motor.SetAngle(angle, g_speed);
+        }
         case '1':
         {
             g_State = State::balancing;
@@ -302,6 +314,8 @@ void digestMessage()
 
     msg.clear();
 }
+
+int g_posCount = 0;
 
 void loop()
 {
@@ -316,20 +330,11 @@ void loop()
 
     if(g_State == State::balancing)
     {
-        auto gravity = readGravity();
-        float invNorm = 1.f / gravity.norm();
-        auto down = dot(gravity, g_balanceDown) * invNorm;
-        auto side = dot(gravity, g_offBalance) * invNorm;
-
-        Serial.print("Down: ");
-        Serial.print(down);
-        Serial.print(", Side: ");
-        Serial.println(side);
-        delay(200);
-    }
-    else if(g_State == State::torqueTest)
-    {
-        g_Motor.Write(g_speed);
+        g_posCount += 1;
+        g_posCount %= 100;
+        //Serial.print("Angle: ");
+        //Serial.println(g_posCount);
+        g_Motor.SetAngle(g_posCount / 99.f, g_speed);
         delay(5);
     }
 }
