@@ -4,64 +4,24 @@
 #include <L298.h>
 #include <vector.h>
 
+#include <BLDCDrivers.h>
+#include "AS5600.h"
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
 
-struct BLDCController
-{
-    static constexpr int dirA = 2;
-    static constexpr int dirB = 3;
-    static constexpr int dirC = 4;
-    static constexpr int enA = 9;
-    static constexpr int enB = 10;
-    static constexpr int enC = 11;
-    
-    void Init()
-    {
-        Disable();
-    }
-
-    void SetAngle(float t, int16_t speed)
-    {
-        // Clear all channels to avoid spikes
-        Disable();
-        t *= 2*PI;
-        const float phaseA = cos(t + 0*PI/3) * speed;
-        const float phaseB = cos(t + 2*PI/3) * speed;
-        const float phaseC = cos(t + 4*PI/3) * speed;
-        digitalWrite(dirA, phaseA > 0 ? HIGH : LOW);
-        digitalWrite(dirB, phaseB > 0 ? HIGH : LOW);
-        digitalWrite(dirC, phaseC > 0 ? HIGH : LOW);
-        analogWrite(enA, abs(phaseA));
-        analogWrite(enB, abs(phaseB));
-        analogWrite(enC, abs(phaseC));
-    }
-
-    void Disable()
-    {
-        digitalWrite(enA, LOW);
-        digitalWrite(enB, LOW);
-        digitalWrite(enC, LOW);
-        //m_ChannelA.Disable();
-        //m_ChannelB.Disable();
-        //m_ChannelC.Disable();
-    }
-
-    uint8_t steps[6] = 
-    { // For each channel (enable, dir)
-        0b100011,
-        0b101100,
-        0b001110,
-        0b110010,
-        0b111000,
-        0b001011
-    };
-
-    uint8_t m_nextStep;
-} g_Motor;
-
 // Hardware defintions
+AS5600 g_encoder;   //  use default Wire
+
+#if 0 // Choose controller implementation
+TrapezoidalController<
+    BLDCAnalogChannel<Pin2, 9>,
+    BLDCAnalogChannel<Pin3, 10>, 
+    BLDCAnalogChannel<Pin4, 11> 
+> g_Motor;
+#else
+SinglePortController<GPIOPortC> g_Motor;
+#endif
 
 Adafruit_MPU6050 g_imu;
 
@@ -96,11 +56,22 @@ void demoIMU()
     delay(500);
 }
 
+void CalibrateMotor()
+{
+    Serial.print("Calibrating motor");
+
+    g_Motor.SetAngle(0, 50); // Move to the reference position
+    delay(500); // Give it time to settle
+    g_Motor.Disable();
+
+    Serial.println("...Done");
+}
+
 void setup() {
     // Config serial port
     Serial.begin(115200);
     g_Motor.Init();
-
+    pinMode(13, OUTPUT);
     // Config IMU
     //while(!g_imu.begin())
     //{
@@ -109,10 +80,7 @@ void setup() {
     //}
 //
     //Serial.println("MPU6050 Found!");
-    Serial.println("Calibrating motor");
-
-    g_Motor.SetAngle(0, 50);
-    delay(500);
+    CalibrateMotor();
 
     g_imu.setAccelerometerRange(MPU6050_RANGE_8_G);
     g_imu.setGyroRange(MPU6050_RANGE_500_DEG);
@@ -317,6 +285,8 @@ void digestMessage()
 
 int g_posCount = 0;
 
+bool ledOn = false;
+
 void loop()
 {
     // Process host messages
@@ -330,11 +300,13 @@ void loop()
 
     if(g_State == State::balancing)
     {
-        g_posCount += 1;
+        g_posCount += (g_speed > 0 ? 1 : 99);
         g_posCount %= 100;
         //Serial.print("Angle: ");
         //Serial.println(g_posCount);
         g_Motor.SetAngle(g_posCount / 99.f, g_speed);
-        delay(5);
     }
+
+    digitalWrite(13, ledOn);
+    ledOn = !ledOn;
 }

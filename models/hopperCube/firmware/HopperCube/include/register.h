@@ -66,4 +66,8 @@ using RegPIND = Register<std::uint8_t, 0x29>;
 using RegDDRD = Register<std::uint8_t, 0x2a>;
 using RegPORTD = Register<std::uint8_t, 0x2b>;
 
+using GPIOPortB = GPIOPort<RegPORTB>;
+using GPIOPortC = GPIOPort<RegPORTC>;
+using GPIOPortD = GPIOPort<RegPORTD>;
+
 #endif // defined (__AVR_ATmega328P__) || defined (__AVR_ATmega2560__)
