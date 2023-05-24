@@ -300,11 +300,12 @@ void loop()
 
     if(g_State == State::balancing)
     {
-        g_posCount += (g_speed > 0 ? 1 : 99);
-        g_posCount %= 100;
+        const int kTau = 50;
+        g_posCount += (g_speed > 0 ? 1 : (kTau-1));
+        g_posCount %= kTau;
         //Serial.print("Angle: ");
         //Serial.println(g_posCount);
-        g_Motor.SetAngle(g_posCount / 99.f, g_speed);
+        g_Motor.SetAngle(g_posCount / (float(kTau-1)), g_speed);
     }
 
     digitalWrite(13, ledOn);
