@@ -46,5 +46,12 @@ public:
 	using ChannelA = HBridge<OutPin1, OutPin2>;
 	using ChannelB = HBridge<OutPin3, OutPin4>;
 
-	// 
+	ChannelA channelA;
+	ChannelB channelB;
+
+	void Disable()
+	{
+		channelA.Disable();
+		channelB.Disable();
+	}
 };

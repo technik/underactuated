@@ -13,22 +13,87 @@
 // Hardware defintions
 AS5600 g_encoder;   //  use default Wire
 Adafruit_MPU6050 g_imu;
+bool g_ImuOk = false;
+
+L298<10,9,6,5> g_MotorController;
+
+template<int PulsePin>
+struct SRF05
+{
+public:
+    void init()
+    {
+        //
+    }
+
+    int measure() const
+    {
+        // Trigger pulse
+        pinMode(PulsePin, OUTPUT);
+        digitalWrite(PulsePin, HIGH);
+        delayMicroseconds(10);
+        digitalWrite(PulsePin, LOW);
+
+        // Wait for response
+        pinMode(PulsePin, INPUT);
+        while(digitalRead(PulsePin) == LOW)
+        {} // Wait for rise
+        long t0 = micros();
+        while(digitalRead(PulsePin) == HIGH)
+        {
+            //if((micros() - t0) > 100000)
+            //{
+            //    return -1;
+            //}
+        } // Wait for low
+        long dt = micros() - t0;
+        pinMode(PulsePin, OUTPUT);
+        return (dt * 17) / 50; // mm
+    }
+};
+
+enum class State
+{
+    standby,
+    relay,
+    calibrate,
+    track,
+    rotate
+} g_State = State::standby;
 
 void setup() {
     // Config serial port
     Serial.begin(115200);
-    //g_Motor.Init();
+    g_MotorController.Disable();
     pinMode(13, OUTPUT);
+    Serial.println("Init");
     // Config IMU
-    while(!g_imu.begin())
+    for(int i = 0; i < 4; ++i)
+    {
+        if(g_imu.begin())
+        {
+            g_ImuOk = true;
+            break;
+        }
+        else
+        {
+            delay(100);
+        }
+    }
+    if(g_ImuOk)
+    {
+        Serial.println("IMU ok");
+
+        g_imu.setAccelerometerRange(MPU6050_RANGE_8_G);
+        g_imu.setGyroRange(MPU6050_RANGE_500_DEG);
+    }
+    else
     {
         Serial.println("Can't init IMU");
-        delay(1000);
     }
 
-    Serial.println("MPU6050 Found!");
-    g_imu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    g_imu.setGyroRange(MPU6050_RANGE_500_DEG);
+    g_State = State::calibrate;
+
 }
 
 struct MessageParser
@@ -59,15 +124,6 @@ struct MessageParser
 
 MessageParser g_pcConnection;
 
-enum class State
-{
-    standby,
-    balancing,
-    torqueTest
-} g_State = State::standby;
-
-math::Vec3f g_gravityA, g_gravityB;
-
 math::Vec3f readGravity()
 {
     sensors_event_t a, g, temp;
@@ -90,37 +146,52 @@ void digestMessage()
     {
         case '0':
         {
-            //g_Motor.Disable();
+            g_MotorController.Disable();
             g_State = State::standby;
             g_speed = 0;
             break;
         }
-        case 't':
-        case 'T':
+        case '1':
         {
-            g_speed = atoi((const char*)&msg[1]);
-            Serial.print("Torque: ");
-            Serial.println(g_speed);
+            g_MotorController.Disable();
+            g_State = State::relay;
             break;
         }
-        case 'p':
+        case '2':
         {
-            int pos = atoi((const char*)&msg[1]);
-            Serial.print("angle: ");
-            Serial.println(pos);
-            float angle = float(pos)/100.f;
-            angle = max(0.f, angle);
-            angle = min(angle, 1.f);
-            //g_Motor.SetAngle(angle, g_speed);
+            g_State = State::track;
+            break;
+        }
+        case 'c':
+        case 'C': // Calibrate
+        {
+            g_MotorController.Disable();
+            g_State = State::calibrate;
+            break;
+        }
+        case 'r':
+        case 'R': // Rotate for calibration
+        {
+            g_MotorController.Disable();
+            g_State = State::rotate;
+            break;
         }
     }
 
     msg.clear();
 }
 
-int g_posCount = 0;
+int g_target = 200;
+SRF05<8> g_frontSensor;
 
 bool ledOn = false;
+
+float readGyro()
+{
+    sensors_event_t a, g, temp;
+    g_imu.getEvent(&a, &g, &temp);
+    return g.gyro.z;
+}
 
 void loop()
 {
@@ -129,18 +200,78 @@ void loop()
     {
         if(g_pcConnection.processMessage())
         {
+            Serial.println("copy");
             digestMessage();
         }
     }
 
-    if(g_State == State::balancing)
+    if(g_State == State::calibrate)
     {
-        const int kTau = 50;
-        g_posCount += (g_speed > 0 ? 1 : (kTau-1));
-        g_posCount %= kTau;
-        //Serial.print("Angle: ");
-        //Serial.println(g_posCount);
-        //g_Motor.SetAngle(g_posCount / (float(kTau-1)), g_speed);
+        // Average a few reads
+        long target = 0;
+        const int N = 4;
+        for(int i = 0; i < N; ++i)
+        {
+            target += g_frontSensor.measure();
+            delay(25);
+        }
+        target /= N;
+        Serial.print("target: ");
+        Serial.println(target);
+        g_target = target;
+
+        g_State = State::track;
+    }
+
+    if(g_State == State::relay)
+    {
+        int y = g_frontSensor.measure();
+
+        Serial.print("y:");
+        Serial.println(y);
+
+        delay(250);
+    }
+
+    if(g_State == State::track)
+    {
+        const float kGyro = -100/3.5;
+        int y = g_frontSensor.measure();
+
+        // read the gyro
+        float errGyro = -kGyro * readGyro();
+
+        int speed = 80;
+        int tolerance = 40;
+        if(y > g_target + tolerance)
+        {
+            g_MotorController.channelA.Write(speed + errGyro);
+            g_MotorController.channelB.Write(speed - errGyro);
+        }
+        else if(y < g_target - tolerance)
+        {
+            g_MotorController.channelA.Write(-speed + errGyro);
+            g_MotorController.channelB.Write(-speed - errGyro);
+        }
+        else
+        {
+            g_MotorController.Disable();
+        }
+    }
+    
+    if(g_State == State::rotate)
+    {
+        int speed = 100;
+        if((millis() / 4000) & 1) // Alternate rotation directions
+        {
+            //speed = -speed;
+        }
+
+        g_MotorController.channelA.Write(speed);
+        g_MotorController.channelB.Write(-speed);
+
+        // Read the gyro
+        Serial.println(readGyro());
     }
 
     digitalWrite(13, ledOn);
