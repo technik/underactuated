@@ -131,3 +131,47 @@ public:
         0b001011
     };
 };
+
+// Designed to drive a 6-Mosfet ESC through a gate driver.
+// All six control pins belong in the same driver
+template<class Port_>
+class ESCPortDriver
+{
+public:
+    ESCPortDriver()
+    {
+        Disable();
+        m_port.ddr = 0x00ffffff; // All 6 pins are output
+    }
+
+    void Disable() // Sets all outputs closed
+    {
+        m_port.port = 0; // All pins low
+    }
+
+    void step()
+    {
+        uint8_t state = kPortStates[m_nextState++];
+        // disable all pins, and stay like this long enough to prevent cross-conduction
+        m_port.port = 0;
+        delayMicroseconds(2);
+        // Enable low side first, will recharge the bootstrap capacitors
+        m_port.port = 0x00010101;
+        delayMicroseconds(244);
+        // Shut down all low fets
+        m_port.port = 0;
+        delayMicroseconds(2);
+        // Enable one side
+        m_nextState %= kNumStates;
+        m_port.port = state;
+        delayMicroseconds(250);
+        // reset all low
+        m_port.port = 0;
+        delayMicroseconds(2);
+    }
+
+    GPIOPort<Port_> m_port;
+    uint8_t m_nextState = 0;
+    inline static constexpr uint8_t kNumStates = 1;
+    inline static constexpr uint8_t kPortStates[kNumStates] = { 0x00000110};
+};

@@ -67,10 +67,12 @@ void CalibrateMotor()
     Serial.println("...Done");
 }
 
+ESCPortDriver<RegPORTB> g_motor;
+
 void setup() {
     // Config serial port
     Serial.begin(115200);
-    g_Motor.Init();
+    //g_Motor.Init();
     pinMode(13, OUTPUT);
     // Config IMU
     //while(!g_imu.begin())
@@ -80,10 +82,12 @@ void setup() {
     //}
 //
     //Serial.println("MPU6050 Found!");
-    CalibrateMotor();
+    //CalibrateMotor();
 
-    g_imu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    g_imu.setGyroRange(MPU6050_RANGE_500_DEG);
+    //g_imu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    //g_imu.setGyroRange(MPU6050_RANGE_500_DEG);
+    g_motor.Disable();
+    Serial.println("Ready");
 }
 
 template<class T, uint32_t Capacity>
@@ -290,7 +294,7 @@ bool ledOn = false;
 void loop()
 {
     // Process host messages
-    if(Serial.available())
+    /*if(Serial.available())
     {
         if(g_pcConnection.processMessage())
         {
@@ -306,7 +310,10 @@ void loop()
         //Serial.print("Angle: ");
         //Serial.println(g_posCount);
         g_Motor.SetAngle(g_posCount / (float(kTau-1)), g_speed);
-    }
+    }*/
+
+    g_motor.step();
+    delayMicroseconds(500);
 
     digitalWrite(13, ledOn);
     ledOn = !ledOn;

@@ -10,7 +10,8 @@ Debug
 build
 */build
 */bin
-
+*/.pio
+.pio
 
 ROS/*.catkin_tools
 ROS/*/devel/
