@@ -1,14 +1,10 @@
 #include <Arduino.h>
 
-// put function declarations here:
-int myFunction(int, int);
+#include <CAN.h>
 
 const int LedPin = 13;
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
-
   pinMode(LedPin, OUTPUT);
 }
 
@@ -18,9 +14,4 @@ void loop() {
   delay(250);
   digitalWrite(LedPin, LOW);
   delay(500);
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
 }
