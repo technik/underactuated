@@ -156,14 +156,14 @@ public:
         m_port.port = 0;
         delayMicroseconds(2);
         // Enable low side first, will recharge the bootstrap capacitors
-        m_port.port = 0x00010101;
+        m_port.port = 0;//0b00010101;
         delayMicroseconds(244);
         // Shut down all low fets
         m_port.port = 0;
         delayMicroseconds(2);
         // Enable one side
         m_nextState %= kNumStates;
-        m_port.port = state;
+        m_port.port = 0b00000110;//state;
         delayMicroseconds(250);
         // reset all low
         m_port.port = 0;
@@ -173,5 +173,5 @@ public:
     GPIOPort<Port_> m_port;
     uint8_t m_nextState = 0;
     inline static constexpr uint8_t kNumStates = 1;
-    inline static constexpr uint8_t kPortStates[kNumStates] = { 0x00000110};
+    inline static constexpr uint8_t kPortStates[kNumStates] = { 0b00000110};
 };

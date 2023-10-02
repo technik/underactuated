@@ -71,3 +71,13 @@ using GPIOPortC = GPIOPort<RegPORTC>;
 using GPIOPortD = GPIOPort<RegPORTD>;
 
 #endif // defined (__AVR_ATmega328P__) || defined (__AVR_ATmega2560__)
+
+using RegPINA = Register<std::uint8_t, 0x20>;
+using RegDDRA = Register<std::uint8_t, 0x21>;
+using RegPORTA = Register<std::uint8_t, 0x22>;
+
+using GPIOPortA = GPIOPort<RegPORTA>;
+
+#if defined (__AVR_ATmega2560__)
+
+#endif

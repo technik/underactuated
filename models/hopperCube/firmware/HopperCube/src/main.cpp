@@ -67,7 +67,7 @@ void CalibrateMotor()
     Serial.println("...Done");
 }
 
-ESCPortDriver<RegPORTB> g_motor;
+ESCPortDriver<RegPORTA> g_motor;
 
 void setup() {
     // Config serial port
