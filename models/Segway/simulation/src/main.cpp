@@ -15,6 +15,16 @@ static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
 
 using namespace math;
 
+template<class Derived>
+struct Singleton
+{
+    static inline Derived* sInstance = nullptr;
+    static void Init() {
+        sInstance = new Derived();
+    }
+    static Derived* Get() { return sInstance; }
+};
+
 struct RenderShape
 {
     RenderShape(const std::string& name) : m_name(name) {}
@@ -22,6 +32,45 @@ struct RenderShape
 
 
     const std::string m_name;
+};
+
+struct Presentation : Singleton<Presentation>
+{
+    void AddRigidBody(RenderShape& shape)
+    {
+        m_Shapes.push_back(&shape);
+    }
+
+    void RemoveRigidBody(RenderShape& shape)
+    {
+        for (size_t i = 0; i < m_Shapes.size(); ++i)
+        {
+            if (m_Shapes[i] == &shape)
+            {
+                m_Shapes[i] = m_Shapes.back();
+                m_Shapes.pop_back();
+                return;
+            }
+        }
+    }
+
+    void Render()
+    {
+        // Set up viewport
+        float size = 20.f;
+        ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
+        ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
+        ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
+
+        // Render all shapes
+        for (auto& shape : m_Shapes)
+        {
+            shape->Render();
+        }
+    }
+
+private:
+    std::vector<RenderShape*> m_Shapes;
 };
 
 struct RenderCircle : RenderShape
@@ -196,6 +245,7 @@ struct Particle
         RigidBodyWorld::Get()->AddRigidBody(*m_rigidBody);
 
         m_renderer = std::make_unique<RenderCircle>(name, radius);
+        Presentation::Get()->AddRigidBody(*m_renderer);
     }
 
     ~Particle()
@@ -224,6 +274,7 @@ public:
     SegwayApp()
     {
         RigidBodyWorld::Init();
+        Presentation::Init();
 
         float a = -5;
         float b = 5;
@@ -275,16 +326,7 @@ public:
         {
             if(ImPlot::BeginPlot("SimViewer", ImVec2(-1, -1), ImPlotFlags_Equal))
             {
-                // Set up rigid axes
-                float size = 20.f;
-                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
-                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
-                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
-
-                for (auto& p : m_Particles)
-                {
-                    p->Render();
-                }
+                Presentation::Get()->Render();
             }
             ImPlot::EndPlot();
         }
