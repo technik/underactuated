@@ -32,6 +32,13 @@ namespace math
             return float(i & ((1 << 24) - 1)) / (1 << 24);
         }
 
+        float uniform(float a, float b)
+        {
+            return a + (b - a) * uniform();
+        }
+
         int m_state = 0;
     };
+
+    using SquirrelRng = LinearCongruentalGenerator;
 }
