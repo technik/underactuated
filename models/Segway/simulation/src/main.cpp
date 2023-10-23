@@ -35,12 +35,12 @@ struct RenderShape
 
 struct Presentation : Singleton<Presentation>
 {
-    void AddRigidBody(RenderShape& shape)
+    void AddShape(RenderShape& shape)
     {
         m_Shapes.push_back(&shape);
     }
 
-    void RemoveRigidBody(RenderShape& shape)
+    void RemoveShape(RenderShape& shape)
     {
         for (size_t i = 0; i < m_Shapes.size(); ++i)
         {
@@ -104,6 +104,29 @@ struct Circle : RenderShape
 
     static inline const ImVec4 kRed = ImVec4(1.f, 0.f, 0.f, 1.f);
     static constexpr inline size_t kNumSegments = 32;
+};
+
+struct KinematicAABB : RenderShape
+{
+    KinematicAABB(const std::string& name, const Vec2f& _min, const Vec2f& _max)
+        : RenderShape(name)
+        , m_Min(_min)
+        , m_Max(_max)
+    {
+    }
+
+    void Render() const override
+    {
+        float x[5] = { m_Min.x(), m_Min.x(), m_Max.x(), m_Max.x(), m_Min.x() };
+        float y[5] = { m_Max.y(), m_Min.y(), m_Min.y(), m_Max.y(), m_Max.y() };
+
+        ImPlot::SetNextLineStyle(m_Color);
+        ImPlot::PlotLine(m_name.c_str(), x, y, 5);
+    }
+
+    // Params
+    ImVec4 m_Color = ImVec4(0.5f, 0.5f, 0.5f, 0.5f);
+    Vec2f m_Min, m_Max;
 };
 
 bool intersect(const Circle& a, const Circle& b)
@@ -206,6 +229,24 @@ struct RigidBodyWorld
             }
         }
     }
+    
+    void AddKinematicBody(KinematicAABB& body)
+    {
+        m_KinematicBodies.push_back(&body);
+    }
+
+    void RemoveKinematicBody(KinematicAABB& body)
+    {
+        for (size_t i = 0; i < m_KinematicBodies.size(); ++i)
+        {
+            if (m_KinematicBodies[i] == &body)
+            {
+                m_KinematicBodies[i] = m_KinematicBodies.back();
+                m_KinematicBodies.pop_back();
+                return;
+            }
+        }
+    }
 
     void AddCollider(Circle& collider)
     {
@@ -283,6 +324,7 @@ private:
     float m_stepResidual = 0;
     std::vector<RigidBody*> m_bodies;
     std::vector<Circle*> m_circleColliders;
+    std::vector<KinematicAABB*> m_KinematicBodies;
 };
 
 struct Particle
@@ -298,13 +340,15 @@ struct Particle
         RigidBodyWorld::Get()->AddRigidBody(*m_rigidBody);
 
         m_renderer = std::make_unique<Circle>(name, radius);
-        Presentation::Get()->AddRigidBody(*m_renderer);
+        Presentation::Get()->AddShape(*m_renderer);
         RigidBodyWorld::Get()->AddCollider(*m_renderer);
     }
 
     ~Particle()
     {
         RigidBodyWorld::Get()->RemoveRigidBody(*m_rigidBody);
+        RigidBodyWorld::Get()->RemoveCollider(*m_renderer);
+        Presentation::Get()->RemoveShape(*m_renderer);
     }
 
     void Update()
@@ -319,6 +363,24 @@ struct Particle
 
     std::unique_ptr<RigidBody> m_rigidBody;
     std::unique_ptr<Circle> m_renderer;
+};
+
+struct Obstacle
+{
+    Obstacle(const std::string& name, const Vec2f& _min, const Vec2f& _max)
+    {
+        m_box = std::make_unique<KinematicAABB>(name, _min, _max);
+        RigidBodyWorld::Get()->AddKinematicBody(*m_box);
+        Presentation::Get()->AddShape(*m_box);
+    }
+
+    ~Obstacle()
+    {
+        RigidBodyWorld::Get()->RemoveKinematicBody(*m_box);
+        Presentation::Get()->RemoveShape(*m_box);
+    }
+
+    std::unique_ptr<KinematicAABB> m_box;
 };
 
 class SegwayApp : public App
@@ -336,6 +398,8 @@ public:
         m_Particles.push_back(std::make_unique<Particle>("p1", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
         m_Particles.push_back(std::make_unique<Particle>("p2", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
         m_Particles.push_back(std::make_unique<Particle>("p3", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
+
+        m_Obstacles.push_back(std::make_unique<Obstacle>("ground", Vec2f(-6.f, -8.f), Vec2f(6.f, -7.f)));
     }
 
     void resetSimulation()
@@ -388,6 +452,7 @@ private:
     bool m_RunningSim = false;
     SquirrelRng m_rng;
     std::vector<std::unique_ptr<Particle>> m_Particles;
+    std::vector<std::unique_ptr<Obstacle>> m_Obstacles;
 };
 
 // Main code
