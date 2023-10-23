@@ -136,6 +136,25 @@ bool intersect(const Circle& a, const Circle& b)
     return relPos.sqNorm() <= R * R;
 }
 
+bool intersect(const Circle& a, const Vec2f& pos)
+{
+    Vec2f relPos = pos - a.m_pos;
+    return relPos.sqNorm() <= a.m_radius * a.m_radius;
+}
+
+bool intersect(const KinematicAABB& aabb, const Circle& c)
+{
+    // Find the point in the AABB closest to the circle
+    auto x = c.m_pos.x();
+    auto y = c.m_pos.y();
+    x = std::min(x, aabb.m_Max.x());
+    y = std::min(y, aabb.m_Max.y());
+    x = std::max(x, aabb.m_Min.x());
+    y = std::max(y, aabb.m_Min.y());
+
+    return intersect(c, Vec2f(x, y));
+}
+
 struct RenderLine : RenderShape
 {
     RenderLine(const std::string& name)
@@ -282,6 +301,16 @@ struct RigidBodyWorld
                 {
                     m_circleColliders[i]->m_Colliding = true;
                     m_circleColliders[j]->m_Colliding = true;
+                }
+            }
+        }
+        for (size_t i = 0; i < m_circleColliders.size(); ++i)
+        {
+            for (size_t j = 0; j < m_KinematicBodies.size(); ++j)
+            {
+                if (intersect(*m_KinematicBodies[j], *m_circleColliders[i]))
+                {
+                    m_circleColliders[i]->m_Colliding = true;
                 }
             }
         }
