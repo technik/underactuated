@@ -30,7 +30,6 @@ struct RenderShape
     RenderShape(const std::string& name) : m_name(name) {}
     virtual void Render() const = 0;
 
-
     const std::string m_name;
 };
 
@@ -73,9 +72,9 @@ private:
     std::vector<RenderShape*> m_Shapes;
 };
 
-struct RenderCircle : RenderShape
+struct Circle : RenderShape
 {
-    RenderCircle(const std::string& name, float radius)
+    Circle(const std::string& name, float radius)
         : RenderShape(name)
         , m_pos{}
         , m_radius(radius)
@@ -91,14 +90,28 @@ struct RenderCircle : RenderShape
             x[i] = m_radius * cos(theta) + m_pos.x();
             y[i] = m_radius * sin(theta) + m_pos.y();
         }
+        ImPlot::SetNextLineStyle(m_Colliding ? kRed : m_Color);
         ImPlot::PlotLine(m_name.c_str(), x, y, kNumSegments + 1);
     }
 
-    math::Vec2f m_pos;
+    // Params
+    ImVec4 m_Color = ImVec4(0.5f, 0.5f, 0.5f, 0.5f);
     float m_radius;
 
+    // State
+    math::Vec2f m_pos;
+    bool m_Colliding = false;
+
+    static inline const ImVec4 kRed = ImVec4(1.f, 0.f, 0.f, 1.f);
     static constexpr inline size_t kNumSegments = 32;
 };
+
+bool intersect(const Circle& a, const Circle& b)
+{
+    float R = a.m_radius + b.m_radius;
+    Vec2f relPos = b.m_pos - a.m_pos;
+    return relPos.sqNorm() <= R * R;
+}
 
 struct RenderLine : RenderShape
 {
@@ -194,8 +207,47 @@ struct RigidBodyWorld
         }
     }
 
+    void AddCollider(Circle& collider)
+    {
+        m_circleColliders.push_back(&collider);
+    }
+
+    void RemoveCollider(Circle& collider)
+    {
+        for (size_t i = 0; i < m_circleColliders.size(); ++i)
+        {
+            if (m_circleColliders[i] == &collider)
+            {
+                m_circleColliders[i] = m_circleColliders.back();
+                m_circleColliders.pop_back();
+                return;
+            }
+        }
+    }
+
     void Update(float dt)
     {
+        // Clear collisions
+        for (auto collider : m_circleColliders)
+        {
+            collider->m_Colliding = false;
+        }
+        // Detect collisions
+        for (size_t i = 0; i < m_circleColliders.size(); ++i)
+        {
+            for (size_t j = i+1; j < m_circleColliders.size(); ++j)
+            {
+                if (intersect(*m_circleColliders[i], *m_circleColliders[j]))
+                {
+                    m_circleColliders[i]->m_Colliding = true;
+                    m_circleColliders[j]->m_Colliding = true;
+                }
+            }
+        }
+
+        if (dt == 0)
+            return; // Early out if the simulation is paused
+
         // Add gravity to every body
         for (auto body : m_bodies)
         {
@@ -230,6 +282,7 @@ private:
 
     float m_stepResidual = 0;
     std::vector<RigidBody*> m_bodies;
+    std::vector<Circle*> m_circleColliders;
 };
 
 struct Particle
@@ -244,8 +297,9 @@ struct Particle
         m_rigidBody->m_Position = pos;
         RigidBodyWorld::Get()->AddRigidBody(*m_rigidBody);
 
-        m_renderer = std::make_unique<RenderCircle>(name, radius);
+        m_renderer = std::make_unique<Circle>(name, radius);
         Presentation::Get()->AddRigidBody(*m_renderer);
+        RigidBodyWorld::Get()->AddCollider(*m_renderer);
     }
 
     ~Particle()
@@ -253,7 +307,7 @@ struct Particle
         RigidBodyWorld::Get()->RemoveRigidBody(*m_rigidBody);
     }
 
-    void Update(float dt)
+    void Update()
     {
         m_renderer->m_pos = m_rigidBody->m_Position;
     }
@@ -264,7 +318,7 @@ struct Particle
     }
 
     std::unique_ptr<RigidBody> m_rigidBody;
-    std::unique_ptr<RenderCircle> m_renderer;
+    std::unique_ptr<Circle> m_renderer;
 };
 
 class SegwayApp : public App
@@ -297,8 +351,6 @@ public:
 
     void update() override
     {
-        float dt = 0.01666f; // TODO: Get this from std::chrono
-
         // Plot params
         if (ImGui::CollapsingHeader("Control"))
         {
@@ -309,16 +361,15 @@ public:
             }
         }
 
+        const float dt = m_RunningSim ? 0.01666f : 0; // TODO: Get this from std::chrono
+
         // Advance physics simulation
-        if (m_RunningSim)
-        {
-            RigidBodyWorld::Get()->Update(dt);
-        }
+        RigidBodyWorld::Get()->Update(dt);
 
         // Update renderers
         for (auto& p : m_Particles)
         {
-            p->Update(dt);
+            p->Update();
         }
 
         // Display results
