@@ -223,6 +223,36 @@ struct RigidBody
     }
 };
 
+struct ForceGenerator
+{
+    virtual void ApplyForces() = 0;
+};
+
+struct Spring : ForceGenerator
+{
+    Spring(RigidBody& a, RigidBody& b, float restLength, float k) // TODO: Support body offsets
+        : m_a(&a)
+        , m_b(&b)
+        , m_restLength(restLength)
+        , m_k(k)
+    {
+    }
+
+    void ApplyForces() override
+    {
+        Vec2f deltaPos = m_b->m_Position - m_a->m_Position;
+        float len = deltaPos.norm();
+        Vec2f F = (len ? ((len - m_restLength)/len * m_k) : 0) * deltaPos;
+        m_b->ApplyForce(-F);
+        m_a->ApplyForce(F);
+    }
+
+    RigidBody* m_a;
+    RigidBody* m_b;
+    float m_restLength;
+    float m_k;
+};
+
 struct RigidBodyWorld
 {
     static inline RigidBodyWorld* sInstance = nullptr;
@@ -285,6 +315,24 @@ struct RigidBodyWorld
         }
     }
 
+    void AddForceGenerator(ForceGenerator& generator)
+    {
+        m_ForceGenerators.push_back(&generator);
+    }
+
+    void RemoveForceGenerator(ForceGenerator& generator)
+    {
+        for (size_t i = 0; i < m_ForceGenerators.size(); ++i)
+        {
+            if (m_ForceGenerators[i] == &generator)
+            {
+                m_ForceGenerators[i] = m_ForceGenerators.back();
+                m_ForceGenerators.pop_back();
+                return;
+            }
+        }
+    }
+
     void Update(float dt)
     {
         // Clear collisions
@@ -292,6 +340,7 @@ struct RigidBodyWorld
         {
             collider->m_Colliding = false;
         }
+
         // Detect collisions
         for (size_t i = 0; i < m_circleColliders.size(); ++i)
         {
@@ -324,6 +373,12 @@ struct RigidBodyWorld
             body->ApplyForce(Vec2f(0.f, -9.81 / body->m_InvInertia));
         }
 
+        // Apply custom force generators
+        for (auto generator : m_ForceGenerators)
+        {
+            generator->ApplyForces();
+        }
+
         // Update simulation
         m_stepResidual += dt;
         while (m_stepResidual > m_fixedStepSize)
@@ -354,6 +409,7 @@ private:
     std::vector<RigidBody*> m_bodies;
     std::vector<Circle*> m_circleColliders;
     std::vector<KinematicAABB*> m_KinematicBodies;
+    std::vector<ForceGenerator*> m_ForceGenerators;
 };
 
 struct Particle
@@ -428,6 +484,9 @@ public:
         m_Particles.push_back(std::make_unique<Particle>("p2", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
         m_Particles.push_back(std::make_unique<Particle>("p3", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
 
+        m_Spring = std::make_unique<Spring>(*m_Particles[0]->m_rigidBody, *m_Particles[1]->m_rigidBody, 4.f, 10.f);
+        RigidBodyWorld::Get()->AddForceGenerator(*m_Spring);
+
         m_Obstacles.push_back(std::make_unique<Obstacle>("ground", Vec2f(-6.f, -8.f), Vec2f(6.f, -7.f)));
     }
 
@@ -480,6 +539,7 @@ public:
 private:
     bool m_RunningSim = false;
     SquirrelRng m_rng;
+    std::unique_ptr<Spring> m_Spring;
     std::vector<std::unique_ptr<Particle>> m_Particles;
     std::vector<std::unique_ptr<Obstacle>> m_Obstacles;
 };
