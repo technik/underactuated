@@ -370,7 +370,8 @@ struct RigidBodyWorld
         // Add gravity to every body
         for (auto body : m_bodies)
         {
-            body->ApplyForce(Vec2f(0.f, -9.81 / body->m_InvInertia));
+            if(body->m_InvMass > 0)
+                body->ApplyForce(Vec2f(0.f, -9.81 / body->m_InvMass));
         }
 
         // Apply custom force generators
@@ -479,7 +480,7 @@ public:
 
         float a = -5;
         float b = 5;
-        m_Particles.push_back(std::make_unique<Particle>("p0", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
+        m_Particles.push_back(std::make_unique<Particle>("p0", 0.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b)))); // kinematic
         m_Particles.push_back(std::make_unique<Particle>("p1", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
         m_Particles.push_back(std::make_unique<Particle>("p2", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
         m_Particles.push_back(std::make_unique<Particle>("p3", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
