@@ -15,6 +15,77 @@ static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
 
 using namespace math;
 
+struct BigMatrix
+{
+    BigMatrix(size_t m, size_t n)
+        : rows(m)
+        , cols(n)
+    {
+        m_data = std::make_unique<float[]>(m * n);
+    }
+
+    BigMatrix(const BigMatrix& b)
+        : rows(b.rows)
+        , cols(b.cols)
+    {
+        m_data = std::make_unique<float[]>(rows * cols);
+        memcpy(m_data.get(), b.m_data.get(), sizeof(float) * rows * cols);
+    }
+
+    void SetZero()
+    {
+        memset(m_data.get(), 0, sizeof(float) * rows * cols);
+    }
+
+    float& operator()(size_t i, size_t j) { return m_data[i * cols + j]; }
+    float operator()(size_t i, size_t j) const { return m_data[i * cols + j]; }
+
+    size_t rows, cols;
+    std::unique_ptr<float[]> m_data;
+};
+
+void Mul(BigMatrix& dst, const BigMatrix& a, const BigMatrix& b)
+{
+    assert(a.cols == b.rows);
+    const int m = a.rows;
+    const int p = a.cols;
+    const int n = b.cols;
+
+    for (int i = 0; i < m; ++i)
+    {
+        for (int j = 0; j < n; ++j)
+        {
+            float x = 0;
+            for (int k = 0; k < p; ++k)
+            {
+                x += a(i, k) * b(k, j);
+            }
+            dst(i, j) = x;
+        }
+    }
+}
+
+void MulA_Bt(BigMatrix& dst, const BigMatrix& a, const BigMatrix& b)
+{
+    assert(a.cols == b.cols);
+    const int m = a.rows;
+    const int p = a.cols;
+    const int n = b.rows;
+
+    for (int i = 0; i < m; ++i)
+    {
+        for (int j = 0; j < n; ++j)
+        {
+            float x = 0;
+            for (int k = 0; k < p; ++k)
+            {
+                x += a(i, k) * b(j, k);
+            }
+            dst(i, j) = x;
+        }
+    }
+}
+
 template<class Derived>
 struct Singleton
 {
