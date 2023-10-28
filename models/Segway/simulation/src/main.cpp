@@ -253,6 +253,38 @@ struct Spring : ForceGenerator
     float m_k;
 };
 
+struct Constraint
+{
+    virtual void ApplyConstraintForce() = 0;
+};
+
+struct PivotConstraint : Constraint
+{
+    PivotConstraint(RigidBody& body, const Vec2f& pivotPos, float distance)
+        : m_body(&body)
+        , m_pivotPos(pivotPos)
+        , m_distance(distance)
+    {
+        assert(body.m_InvMass != 0);
+    }
+
+    void ApplyConstraintForce() override
+    {
+        Vec2f relPos = m_body->m_Position - m_pivotPos;
+        Vec2f v = m_body->m_LinearVelocity;
+        float r2 = relPos.sqNorm();
+        float v2 = v.sqNorm();
+        float work = dot(m_body->m_AccumForces, relPos);
+        float invMass = m_body->m_InvMass;
+        float lambda = -(work * invMass + v2) / (r2 * invMass);
+        m_body->ApplyForce(lambda * relPos);
+    }
+
+    RigidBody* m_body;
+    Vec2f m_pivotPos;
+    float m_distance;
+};
+
 struct RigidBodyWorld
 {
     static inline RigidBodyWorld* sInstance = nullptr;
@@ -333,7 +365,39 @@ struct RigidBodyWorld
         }
     }
 
+    void AddConstraint(Constraint& constraint)
+    {
+        m_Constraints.push_back(&constraint);
+    }
+
+    void RemoveConstraint(Constraint& constraint)
+    {
+        for (size_t i = 0; i < m_Constraints.size(); ++i)
+        {
+            if (m_Constraints[i] == &constraint)
+            {
+                m_Constraints[i] = m_Constraints.back();
+                m_Constraints.pop_back();
+                return;
+            }
+        }
+    }
+
     void Update(float dt)
+    {
+        // Update simulation
+        m_stepResidual += dt;
+        while (m_stepResidual > m_fixedStepSize)
+        {
+            m_stepResidual -= m_fixedStepSize;
+            Step();
+        }
+    }
+
+    float m_fixedStepSize = 0.01f;
+
+private:
+    void Step()
     {
         // Clear collisions
         for (auto collider : m_circleColliders)
@@ -344,7 +408,7 @@ struct RigidBodyWorld
         // Detect collisions
         for (size_t i = 0; i < m_circleColliders.size(); ++i)
         {
-            for (size_t j = i+1; j < m_circleColliders.size(); ++j)
+            for (size_t j = i + 1; j < m_circleColliders.size(); ++j)
             {
                 if (intersect(*m_circleColliders[i], *m_circleColliders[j]))
                 {
@@ -364,13 +428,10 @@ struct RigidBodyWorld
             }
         }
 
-        if (dt == 0)
-            return; // Early out if the simulation is paused
-
         // Add gravity to every body
         for (auto body : m_bodies)
         {
-            if(body->m_InvMass > 0)
+            if (body->m_InvMass > 0)
                 body->ApplyForce(Vec2f(0.f, -9.81 / body->m_InvMass));
         }
 
@@ -380,12 +441,16 @@ struct RigidBodyWorld
             generator->ApplyForces();
         }
 
-        // Update simulation
-        m_stepResidual += dt;
-        while (m_stepResidual > m_fixedStepSize)
+        // Apply constraints force generators
+        for (auto c : m_Constraints)
         {
-            m_stepResidual -= m_fixedStepSize;
-            Step();
+            c->ApplyConstraintForce();
+        }
+
+        // Integrate trajectories
+        for (auto body : m_bodies)
+        {
+            body->Integrate(m_fixedStepSize);
         }
 
         // Clear forces
@@ -395,22 +460,12 @@ struct RigidBodyWorld
         }
     }
 
-    float m_fixedStepSize = 0.01f;
-
-private:
-    void Step()
-    {
-        for (auto body : m_bodies)
-        {
-            body->Integrate(m_fixedStepSize);
-        }
-    }
-
     float m_stepResidual = 0;
     std::vector<RigidBody*> m_bodies;
     std::vector<Circle*> m_circleColliders;
     std::vector<KinematicAABB*> m_KinematicBodies;
     std::vector<ForceGenerator*> m_ForceGenerators;
+    std::vector<Constraint*> m_Constraints;
 };
 
 struct Particle
@@ -485,6 +540,10 @@ public:
         m_Particles.push_back(std::make_unique<Particle>("p2", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
         m_Particles.push_back(std::make_unique<Particle>("p3", 1.f, 1.f, Vec2f(m_rng.uniform(a, b), m_rng.uniform(a, b))));
 
+        const float armLen = 3;
+        m_Constraints.push_back(std::make_unique<PivotConstraint>(*m_Particles[3]->m_rigidBody, m_Particles[3]->m_rigidBody->m_Position + Vec2f(armLen, 0), armLen));
+        RigidBodyWorld::Get()->AddConstraint(*m_Constraints.back());
+
         m_Spring = std::make_unique<Spring>(*m_Particles[0]->m_rigidBody, *m_Particles[1]->m_rigidBody, 4.f, 10.f);
         RigidBodyWorld::Get()->AddForceGenerator(*m_Spring);
 
@@ -543,6 +602,7 @@ private:
     std::unique_ptr<Spring> m_Spring;
     std::vector<std::unique_ptr<Particle>> m_Particles;
     std::vector<std::unique_ptr<Obstacle>> m_Obstacles;
+    std::vector<std::unique_ptr<Constraint>> m_Constraints;
 };
 
 // Main code
