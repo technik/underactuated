@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from math import *
 
-
 dt = 1
 g = 9.81
 
@@ -10,22 +9,12 @@ Q_covariance = 1.0
 R_covariance = 1.0
 
 def linearF(X):
-    # return np.vstack((np.hstack((np.eye(3), np.eye(3)*dt)),np.zeros((3, 6))))
     return np.array([[1, dt], [0, 0]])
 
 def f(X):
     return np.array([X[0] + X[1]*dt, X[1]]).T
 
 def linearH(X):
-    # theta = x[2]
-
-    # H = np.zeros((3,6))
-    # H[0,2] = g*sin(theta)
-    # H[0,3] = g*cos(theta)
-    # H[-1,-1] = 1
-
-    # return H
-
     theta = X[0]
     H = np.array([[g*sin(theta), 0],[g*cos(theta), 0], [0, 1]])
 
@@ -66,7 +55,7 @@ Xs_actual = np.zeros((2,num_steps))
 Ps = np.zeros((2,num_steps))
 ts = np.zeros(num_steps)
 
-# X_k_1 = X
+# Initial state estimate, might be wrong
 X_k_1 = np.array([1, 0])
 P_k_1 = P
 
@@ -105,12 +94,6 @@ for i, t in enumerate(ts):
     print(X_k.shape)
 
 print("Done!")
-
-# print(Xs.shape)
-# print(Xs_actual.shape)
-# print(Xs_actual)
-# print(Xs)
-# print(ts)
 
 plt.figure(1)
 plt.title("Position")
