@@ -14,6 +14,79 @@ static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
 
 using namespace math;
 
+namespace // Unnamed drawing utilities
+{
+    // Auxiliary drawing
+    template<int numSegments>
+    static void plotCircle(const char* name, float x0, float y0, float radius)
+    {
+        static_assert(numSegments > 1);
+        float x[numSegments + 1];
+        float y[numSegments + 1];
+        for (int i = 0; i < numSegments + 1; ++i)
+        {
+            auto theta = i * TwoPi / numSegments;
+            x[i] = radius * cos(theta) + x0;
+            y[i] = radius * sin(theta) + y0;
+        }
+        ImPlot::PlotLine(name, x, y, numSegments + 1);
+    }
+
+    static void plotLine(const char* name, const Vec2d& a, const Vec2d& b)
+    {
+        float x[2] = { float(a.x()), float(b.x()) };
+        float y[2] = { float(a.y()), float(b.y()) };
+
+        ImPlot::PlotLine(name, x, y, 2);
+    }
+}
+
+struct DifferentialCart
+{
+    struct Params
+    {
+        double maxWheelVel;
+        double axisLen;
+    } m_params;
+
+    struct State
+    {
+        double vRight = 0;
+        double vLeft = 0;
+        Vec2d pos;
+        double orient;
+    } m_state;
+
+    struct Input
+    {
+        double dvRight = 0;
+        double dvLeft = 0;
+    };
+
+    void step(double dt, const Input& action)
+    {
+        // Basic Euler integration
+        double meanVel = 0.5 * (m_state.vRight + m_state.vLeft);
+        double diffVel = (m_state.vRight - m_state.vLeft) / m_params.axisLen;
+        double ct = cos(m_state.orient);
+        double st = sin(m_state.orient);
+        m_state.pos += (dt * meanVel) * Vec2d(ct, st);
+        m_state.orient += dt * diffVel;
+
+        // Apply the action
+        m_state.vRight = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, m_state.vRight + action.dvRight));
+        m_state.vLeft = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, m_state.vLeft + action.dvLeft));
+    }
+
+    void draw()
+    {
+        float radius = float(m_params.axisLen * 0.5);
+        plotCircle<20>("bot", m_state.pos.x(), m_state.pos.y(), radius);
+        Vec2d lookAt = m_state.pos + radius * Vec2d(cos(m_state.orient), sin(m_state.orient));
+        plotLine("botDir", m_state.pos, lookAt);
+    }
+};
+
 struct Pendulum
 {
     struct Params
@@ -344,30 +417,6 @@ private:
         double y = -m_pendulumParams.l1 * cos(m_pendulumState.theta);
         plotLine("axis", { 0, 0 }, { x, y });
         plotCircle<20>("End point", x, y, 0.1f);
-    }
-
-    // Auxiliary drawing
-    template<int numSegments>
-    static void plotCircle(const char* name, float x0, float y0, float radius)
-    {
-        static_assert(numSegments > 1);
-        float x[numSegments + 1];
-        float y[numSegments + 1];
-        for (int i = 0; i < numSegments + 1; ++i)
-        {
-            auto theta = i * TwoPi / numSegments;
-            x[i] = radius * cos(theta) + x0;
-            y[i] = radius * sin(theta) + y0;
-        }
-        ImPlot::PlotLine(name, x, y, numSegments + 1);
-    }
-
-    static void plotLine(const char* name, const Vec2d& a, const Vec2d& b)
-    {
-        float x[2] = { float(a.x()), float(b.x()) };
-        float y[2] = { float(a.y()), float(b.y()) };
-
-        ImPlot::PlotLine(name, x, y, 2);
     }
 };
 

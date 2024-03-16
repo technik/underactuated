@@ -48,4 +48,5 @@ endmacro()
 
 add_subdirectory(models/acrobot)
 add_subdirectory(models/pendulum)
+add_subdirectory(models/liquid1)
 add_subdirectory(models/Segway/simulation)
