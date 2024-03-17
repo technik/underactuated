@@ -376,8 +376,8 @@ private:
     double m_lastScore = 0;
     double m_bestScore = 0;
     int m_curEpoch = 0;
-    int m_maxEpoch = 20;
-    int m_iterationsPerEpoch = 10;
+    int m_maxEpoch = 1000;
+    int m_iterationsPerEpoch = 40;
 
     void advanceSimulation()
     {
