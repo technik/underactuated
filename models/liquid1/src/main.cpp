@@ -238,7 +238,7 @@ public:
     {
         cart.m_state.pos.x() = -testTrack.length * 0.5;
         cart.m_state.pos.y() = -testTrack.width * 0.5 + testTrack.width * m_rng.uniform();
-        cart.m_state.orient = 0;// (-0.5 + m_rng.uniform()) * 3.1415927;
+        cart.m_state.orient = (-0.5 + m_rng.uniform()) * 3.1415927;
         cart.m_state.vLeft = 0;
         cart.m_state.vRight = 0;
     }
@@ -276,6 +276,7 @@ public:
             }
             else
             {
+                policy = bestPolicy;
                 m_simState = SimState::Running;
             }
         }
@@ -351,7 +352,7 @@ public:
         {
             ImGui::InputDouble("Left", &cart.m_state.vLeft);
             ImGui::InputDouble("Right", &cart.m_state.vRight);
-            ImGui::InputDouble("Right", &cart.m_state.orient);
+            ImGui::InputDouble("Angle", &cart.m_state.orient);
             if (ImGui::Button("Randomize start"))
             {
                 randomizeStart();
