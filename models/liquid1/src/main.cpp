@@ -217,11 +217,20 @@ public:
     LinearTrack testTrack;
     //RandomPolicy policy;
     LinearPolicy policy;
+    LinearPolicy bestPolicy;
+
+    enum class SimState
+    {
+        Running,
+        Training,
+        Stopped
+    } m_simState = SimState::Stopped;
 
     CartApp()
     {
         randomizeStart();
-        policy.randomizeWeights(m_rng);
+        bestPolicy.randomizeWeights(m_rng);
+        policy = bestPolicy;
         cart.m_state.pos.y() = 0; // Start at the center pos first
     }
 
@@ -236,6 +245,81 @@ public:
 
     void update() override
     {
+        drawUI();
+
+        // Run simulation
+        if (m_simState == SimState::Running)
+        {
+            advanceSimulation();
+        }
+        if (m_simState == SimState::Training)
+        {
+            // Do one epoch per step
+            if (m_maxEpoch == 0 || m_curEpoch < m_maxEpoch)
+            {
+                policy.randomizeWeights(m_rng);
+                double totalScore = 0;
+                for (int i = 0; i < m_iterationsPerEpoch; ++i)
+                {
+                    randomizeStart();
+                    while(stepSimulation())
+                    { }
+
+                    totalScore += m_lastScore;
+                }
+                if (totalScore > m_bestScore)
+                {
+                    m_bestScore = totalScore;
+                    bestPolicy = policy;
+                }
+                ++m_curEpoch;
+            }
+            else
+            {
+                m_simState = SimState::Running;
+            }
+        }
+
+        // Draw simulation state
+        if (ImGui::Begin("Simulation"))
+        {
+            float size = float(0.55 * testTrack.length);
+            if (ImPlot::BeginPlot("Cart", ImVec2(-1, -1), ImPlotFlags_Equal))
+            {
+                // Set up rigid axes
+                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
+                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
+                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
+
+                plotState();
+            }
+            ImPlot::EndPlot();
+        }
+        ImGui::End();
+    }
+
+    void drawUI()
+    {
+        if (ImGui::Button("Train"))
+        {
+            m_simState = SimState::Training;
+            m_curEpoch = 0;
+        }
+        if (ImGui::Button("Play"))
+        {
+            randomizeStart();
+            m_simState = SimState::Running;
+            policy = bestPolicy;
+        }
+        if (ImGui::Button("Stop"))
+        {
+            m_simState = SimState::Stopped;
+        }
+        if (ImGui::Button("Reset training"))
+        {
+            m_bestScore = 0;
+            bestPolicy.randomizeWeights(m_rng);
+        }
         // Plot params
         if (ImGui::CollapsingHeader("Params"))
         {
@@ -253,6 +337,15 @@ public:
             }
         }
 
+        if (ImGui::CollapsingHeader("Training"))
+        {
+            ImGui::InputInt("training epochs", &m_maxEpoch);
+            ImGui::InputInt("iterations/epoch ", &m_iterationsPerEpoch);
+            ImGui::Text("Epoch: %d", m_curEpoch);
+            ImGui::Text("Last Score: %f", (float)m_lastScore);
+            ImGui::Text("Best Score: %f", (float)m_bestScore / m_iterationsPerEpoch);
+        }
+
         // Plot state
         if(ImGui::CollapsingHeader("State"))
         {
@@ -264,41 +357,18 @@ public:
                 randomizeStart();
             }
         }
-
-        // Run simulation
-        ImGui::Checkbox("Run", &m_isRunningSimulation);
-        if (m_isRunningSimulation)
-        {
-            advanceSimulation();
-        }
-
-        ImGui::Text("Score: %f", (float)m_lastScore);
-
-        // Display results
-        if(ImGui::Begin("Simulation"))
-        {
-            float size = float(0.55 * testTrack.length);
-            if(ImPlot::BeginPlot("Cart", ImVec2(-1, -1), ImPlotFlags_Equal))
-            {
-                // Set up rigid axes
-                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
-                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
-                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
-
-                plotState();
-            }
-            ImPlot::EndPlot();
-        }
-        ImGui::End();
     }
 
 private:
-    bool m_isRunningSimulation = false;
     double m_accumTime = 0;
     double m_stepDt = 0.001;
     double m_runTime = 0;
     double m_timeOut = 10;
     double m_lastScore = 0;
+    double m_bestScore = 0;
+    int m_curEpoch = 0;
+    int m_maxEpoch = 20;
+    int m_iterationsPerEpoch = 10;
 
     void advanceSimulation()
     {
@@ -307,11 +377,12 @@ private:
         {
             m_accumTime -= m_stepDt;
 
-            stepSimulation();
+            bool stillAlive = stepSimulation();
         }
     }
 
-    void stepSimulation()
+    // returns whether the simulation is ongoing
+    bool stepSimulation()
     {
         m_runTime += m_stepDt;
         auto action = policy.computeAction(m_rng, cart, testTrack);
@@ -324,7 +395,10 @@ private:
             m_lastScore = testTrack.length + cart.m_state.pos.x();
             randomizeStart();
             m_runTime = 0;
+            return false;
         }
+
+        return true;
     }
     
     SquirrelRng m_rng;
