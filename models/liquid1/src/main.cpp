@@ -272,6 +272,8 @@ public:
             advanceSimulation();
         }
 
+        ImGui::Text("Score: %f", (float)m_lastScore);
+
         // Display results
         if(ImGui::Begin("Simulation"))
         {
@@ -296,6 +298,7 @@ private:
     double m_stepDt = 0.001;
     double m_runTime = 0;
     double m_timeOut = 10;
+    double m_lastScore = 0;
 
     void advanceSimulation()
     {
@@ -313,8 +316,12 @@ private:
         m_runTime += m_stepDt;
         auto action = policy.computeAction(m_rng, cart, testTrack);
         cart.step(m_stepDt, action);
-        if (m_runTime > m_timeOut || !testTrack.isValidPos(cart.m_state.pos) || testTrack.isGoal(cart.m_state.pos))
+        bool dead = !testTrack.isValidPos(cart.m_state.pos);
+        bool win = testTrack.isGoal(cart.m_state.pos);
+        bool timeOut = m_runTime > m_timeOut;
+        if (timeOut || dead || win)
         {
+            m_lastScore = testTrack.length + cart.m_state.pos.x();
             randomizeStart();
             m_runTime = 0;
         }
