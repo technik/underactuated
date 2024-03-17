@@ -9,6 +9,8 @@
 #include <numbers>
 #include <random>
 
+#include <libs/eigen/Eigen/Core>
+
 static constexpr auto Pi = std::numbers::pi_v<double>;
 static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
 
@@ -101,14 +103,6 @@ struct DifferentialCart
         double dvLeft = 0;
     };
 
-    Input updateController(SquirrelRng& rng)
-    {
-        Input action;
-        action.dvLeft = rng.uniform() - 0.5;
-        action.dvRight = rng.uniform() - 0.5;
-        return action;
-    }
-
     void step(double dt, const Input& action)
     {
         // Basic Euler integration
@@ -118,6 +112,10 @@ struct DifferentialCart
         double st = sin(m_state.orient);
         m_state.pos += (dt * meanVel) * Vec2d(ct, st);
         m_state.orient += dt * diffVel;
+        if (m_state.orient < -TwoPi)
+            m_state.orient += TwoPi;
+        if (m_state.orient > TwoPi)
+            m_state.orient -= TwoPi;
 
         // Apply the action
         m_state.vRight = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, m_state.vRight + action.dvRight));
@@ -158,15 +156,72 @@ struct LinearTrack
     }
 };
 
+struct CartPolicy
+{
+    using Action = DifferentialCart::Input;
+    virtual DifferentialCart::Input& computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) = 0;
+};
+
+struct RandomPolicy : CartPolicy
+{
+    Action& computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override
+    {
+        Action action;
+        action.dvLeft = rng.uniform() - 0.5;
+        action.dvRight = rng.uniform() - 0.5;
+        return action;
+    }
+};
+
+struct LinearPolicy : CartPolicy
+{
+    Eigen::Matrix<float, 2, 6> weights;
+    Eigen::Vector<float, 6> inputVector;
+
+    void randomizeWeights(SquirrelRng& rng)
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            for (int j = 0; j < 6; ++j)
+            {
+                weights(i, j) = rng.uniform() * 2 - 1;
+            }
+        }
+    }
+
+    Action& computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override
+    {
+        // Computen input vector from agent state
+        auto& state = agent.m_state;
+        inputVector[0] = state.orient;
+        inputVector[1] = state.pos.x();
+        inputVector[2] = state.pos.y();
+        inputVector[3] = state.vLeft;
+        inputVector[4] = state.vRight;
+        inputVector[5] = 1; // Bias
+
+        // Apply the single neuron layer
+        Eigen::Vector<float, 2> activations = weights * inputVector;
+
+        Action action;
+        action.dvLeft = activations[0];
+        action.dvRight = activations[1];
+        return action;
+    }
+};
+
 class CartApp : public App
 {
 public:
     DifferentialCart cart;
     LinearTrack testTrack;
+    //RandomPolicy policy;
+    LinearPolicy policy;
 
     CartApp()
     {
         randomizeStart();
+        policy.randomizeWeights(m_rng);
         cart.m_state.pos.y() = 0; // Start at the center pos first
     }
 
@@ -191,6 +246,11 @@ public:
             {
                 cart.m_params.axisLen = 0.1 + 0.4 * m_rng.uniform();
             }
+            if (ImGui::Button("Randomize Policy"))
+            {
+                policy.randomizeWeights(m_rng);
+                randomizeStart();
+            }
         }
 
         // Plot state
@@ -198,6 +258,7 @@ public:
         {
             ImGui::InputDouble("Left", &cart.m_state.vLeft);
             ImGui::InputDouble("Right", &cart.m_state.vRight);
+            ImGui::InputDouble("Right", &cart.m_state.orient);
             if (ImGui::Button("Randomize start"))
             {
                 randomizeStart();
@@ -233,6 +294,8 @@ private:
     bool m_isRunningSimulation = false;
     double m_accumTime = 0;
     double m_stepDt = 0.001;
+    double m_runTime = 0;
+    double m_timeOut = 10;
 
     void advanceSimulation()
     {
@@ -247,11 +310,13 @@ private:
 
     void stepSimulation()
     {
-        auto action = cart.updateController(m_rng);
+        m_runTime += m_stepDt;
+        auto action = policy.computeAction(m_rng, cart, testTrack);
         cart.step(m_stepDt, action);
-        if (!testTrack.isValidPos(cart.m_state.pos) || testTrack.isGoal(cart.m_state.pos))
+        if (m_runTime > m_timeOut || !testTrack.isValidPos(cart.m_state.pos) || testTrack.isGoal(cart.m_state.pos))
         {
             randomizeStart();
+            m_runTime = 0;
         }
     }
     
