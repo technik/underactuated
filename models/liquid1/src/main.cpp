@@ -41,20 +41,58 @@ namespace // Unnamed drawing utilities
     }
 }
 
+namespace // Math utils
+{
+    static constexpr auto g = 9.81;
+
+    static int squirrelNoise(int position, int seed = 0)
+    {
+        constexpr unsigned int BIT_NOISE1 = 0xB5297A4D;
+        constexpr unsigned int BIT_NOISE2 = 0x68E31DA4;
+        constexpr unsigned int BIT_NOISE3 = 0x1B56C4E9;
+
+        int mangled = position;
+        mangled *= BIT_NOISE1;
+        mangled += seed;
+        mangled ^= (mangled >> 8);
+        mangled *= BIT_NOISE2;
+        mangled ^= (mangled << 8);
+        mangled *= BIT_NOISE3;
+        mangled ^= (mangled >> 8);
+        return mangled;
+    }
+
+    struct SquirrelRng
+    {
+        int rand()
+        {
+            return squirrelNoise(state++);
+        }
+
+        float uniform()
+        {
+            auto i = rand();
+            return float(i & ((1 << 24) - 1)) / (1 << 24);
+        }
+
+        int state = 0;
+    };
+}
+
 struct DifferentialCart
 {
     struct Params
     {
-        double maxWheelVel;
-        double axisLen;
+        double maxWheelVel = 2;
+        double axisLen = 0.2;
     } m_params;
 
     struct State
     {
         double vRight = 0;
         double vLeft = 0;
-        Vec2d pos;
-        double orient;
+        Vec2d pos = {};
+        double orient = 0;
     } m_state;
 
     struct Input
@@ -62,6 +100,14 @@ struct DifferentialCart
         double dvRight = 0;
         double dvLeft = 0;
     };
+
+    Input updateController(SquirrelRng& rng)
+    {
+        Input action;
+        action.dvLeft = rng.uniform() - 0.5;
+        action.dvRight = rng.uniform() - 0.5;
+        return action;
+    }
 
     void step(double dt, const Input& action)
     {
@@ -87,120 +133,50 @@ struct DifferentialCart
     }
 };
 
-struct Pendulum
+struct LinearTrack
 {
-    struct Params
-    {
-        double l1 = 1; // Bar lengths
-        double m1 = 1; // Bar masses
-        double b1 = 0; // Friction at the joints
-        double I1 = 1; // Inertia tensors
-        double MaxQ = 0; // Torque limit. 0 means unlimited torque
-        double MaxPower = 0; // Power limit. 0 means unlimited power
+    double length = 10;
+    double width = 1;
 
-        void refreshInertia()
-        {
-            // Inertia concentrated at the end
-            I1 = m1 * l1 * l1 / 3;
-        }
-    };
-
-    struct State
+    void draw()
     {
-        double theta = 0;
-        double dTheta = 0;
-    };
+        const auto hLen = length * 0.5;
+        const auto hWid = width * 0.5;
 
-    struct Controller
-    {
-        virtual void drawInterface() {}
-        virtual double control(const State& x) = 0;
-    };
-};
-
-struct LQRValueIterationController : public Pendulum::Controller
-{
-    void drawInterface() override
-    {
-        if (ImGui::Begin("Approx LQR"))
-        {
-            ImGui::InputInt("Max iterations", &m_maxIterations);
-            if(ImGui::Button("Recompute Policy"))
-            { }
-            ImGui::End();
-        }
+        plotLine("top", Vec2d(-hLen, hWid), Vec2d(hLen, hWid));
+        plotLine("bottom", Vec2d(-hLen, -hWid), Vec2d(hLen, -hWid));
     }
 
-    double control(const Pendulum::State& x) override
+    bool isValidPos(const Vec2d& pos) const
     {
-        return 0;
+        return abs(pos.y()) <= 0.5 * width && pos.x() >= -0.5 * length;
     }
 
-    void computePolicy()
+    bool isGoal(const Vec2d& pos) const
     {
-        // Initialize policy
-        const double clearCost = m_policySizeX * m_policySizeX * 1000;
-        m_policy.clear();
-        m_policy.resize(m_policySizeX * m_policySizeX, clearCost);
-
-        // Discrete actions
-        double actions[3] = { -m_maxTorque, 0, m_maxTorque };
-
-        int maxIterations = 50;
-    }
-
-    double cost(Pendulum::State s, double action)
-    {
-        // LQR cost = x2 + dx2 + u2
-        // Limit action to the power and torque constrains
-        auto maxQPower = abs(s.dTheta * m_maxTorque); // Power required under max Q
-        double maxQ = maxQPower > m_maxPower ?
-            abs(m_maxPower / s.dTheta) : // Power limited
-            m_maxTorque; // Torque limited
-
-        double u = action > 0 ? maxQ : (action < 0 ? -maxQ : 0);
-
-        Vec2d x = Vec2d{ s.theta, s.dTheta } - goal;
-
-        return x * Q * x + u * R * u;
-    }
-
-    double m_maxTorque = 0;
-    double m_maxPower = 0;
-
-    // Control params
-    Mat22d Q = Mat22d(
-        1, 0,
-        0, 10); // State cost
-    double R = 1; // actuation cost
-
-    // Statistics
-    Vec2d goal = { 3.1415927, 0 }; // Still on top
-
-    int m_maxIterations = 50;
-    int m_lastIterations = 0;
-    int m_policySizeX = 51;
-    int m_policySizeY = 51;
-    std::vector<double> m_policy;
-};
-
-struct EnergyPumpController : public Pendulum::Controller
-{
-    void drawInterface() override
-    {
-    }
-
-    double control(const Pendulum::State& x) override
-    {
-        return 0;
+        return isValidPos(pos) && pos.x() > 0.5 * length;
     }
 };
 
-class PendulumApp : public App
+class CartApp : public App
 {
 public:
-    PendulumApp()
+    DifferentialCart cart;
+    LinearTrack testTrack;
+
+    CartApp()
     {
+        randomizeStart();
+        cart.m_state.pos.y() = 0; // Start at the center pos first
+    }
+
+    void randomizeStart()
+    {
+        cart.m_state.pos.x() = -testTrack.length * 0.5;
+        cart.m_state.pos.y() = -testTrack.width * 0.5 + testTrack.width * m_rng.uniform();
+        cart.m_state.orient = 0;// (-0.5 + m_rng.uniform()) * 3.1415927;
+        cart.m_state.vLeft = 0;
+        cart.m_state.vRight = 0;
     }
 
     void update() override
@@ -208,47 +184,24 @@ public:
         // Plot params
         if (ImGui::CollapsingHeader("Params"))
         {
-            bool inertiaChanged = false;
-            inertiaChanged = ImGui::InputDouble("Mass", &m_pendulumParams.m1);
-            inertiaChanged |= ImGui::InputDouble("Length", &m_pendulumParams.l1);
-            if(inertiaChanged)
-            {
-                m_pendulumParams.refreshInertia();
-            }
-            ImGui::InputDouble("Friction", &m_pendulumParams.b1);
-            ImGui::InputDouble("Torque Limit", &m_pendulumParams.MaxQ);
+            ImGui::InputDouble("Axis Len", &cart.m_params.axisLen);
+            ImGui::InputDouble("Max vel", &cart.m_params.maxWheelVel);
+
             if (ImGui::Button("Generate"))
             {
-                m_pendulumParams.l1 = m_rng.uniform() * 10;
-                m_pendulumParams.m1 = m_rng.uniform() * 10;
-                m_pendulumParams.b1 = m_rng.uniform() * 10;
-                m_pendulumParams.refreshInertia();
+                cart.m_params.axisLen = 0.1 + 0.4 * m_rng.uniform();
             }
         }
 
         // Plot state
         if(ImGui::CollapsingHeader("State"))
         {
-            ImGui::InputDouble("Theta", &m_pendulumState.theta);
-            ImGui::InputDouble("dTheta", &m_pendulumState.dTheta);
-            if (ImGui::Button("Randomize"))
+            ImGui::InputDouble("Left", &cart.m_state.vLeft);
+            ImGui::InputDouble("Right", &cart.m_state.vRight);
+            if (ImGui::Button("Randomize start"))
             {
-                m_pendulumState.theta = m_rng.uniform() * 2 * 3.1415927;
+                randomizeStart();
             }
-            if (ImGui::Button("Perturbate"))
-            {
-                m_pendulumState.dTheta += m_rng.uniform() - 0.5;
-            }
-        }
-
-        // Plot state
-        if (ImGui::CollapsingHeader("Control"))
-        {
-            bool control = m_control == ControlMode::EnergyPump;
-            ImGui::Checkbox("Energy Pump", &control);
-            m_control = control ? ControlMode::EnergyPump : ControlMode::Free;
-
-            ImGui::InputDouble("Gain", &m_energyGain);
         }
 
         // Run simulation
@@ -261,15 +214,15 @@ public:
         // Display results
         if(ImGui::Begin("Simulation"))
         {
-            float size = float(1.1 * m_pendulumParams.l1);
-            if(ImPlot::BeginPlot("Pendulum", ImVec2(-1, -1), ImPlotFlags_Equal))
+            float size = float(0.55 * testTrack.length);
+            if(ImPlot::BeginPlot("Cart", ImVec2(-1, -1), ImPlotFlags_Equal))
             {
                 // Set up rigid axes
                 ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
                 ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
                 ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
 
-                plotPendulum();
+                plotState();
             }
             ImPlot::EndPlot();
         }
@@ -277,24 +230,9 @@ public:
     }
 
 private:
-
-    LQRValueIterationController m_approxLQR;
-
-    Pendulum::Params m_pendulumParams;
-    Pendulum::State m_pendulumState;
-
-    enum class ControlMode
-    {
-        Free,
-        EnergyPump
-    };
-    ControlMode m_control = ControlMode::Free;
-
     bool m_isRunningSimulation = false;
     double m_accumTime = 0;
     double m_stepDt = 0.001;
-    
-    double m_energyGain = 1;
 
     void advanceSimulation()
     {
@@ -307,123 +245,29 @@ private:
         }
     }
 
-    double computeControllerInput()
-    {
-        if (m_control == ControlMode::Free)
-        {
-            return 0;
-        }
-        else
-        {
-            auto& x = m_pendulumState;
-            auto& p = m_pendulumParams;
-            // Target energy to stay still at the top:
-            auto mgl = p.m1 * g * p.l1;
-            auto Egoal = mgl;
-
-            // Current energy
-            auto T = 0.5 * p.m1 * p.l1 * p.l1 * x.dTheta * x.dTheta;
-            auto V = p.m1 * g * p.l1 * -cos(x.theta);
-            auto E = T + V;
-
-            // Choose control method
-            bool pumpEnergy = false;
-            // Find the lowest angle we can stall at with MaxQ
-            bool torqueLimited = p.MaxQ != 0 && p.MaxQ < p.m1* p.l1* g;
-            if (torqueLimited)
-            {
-                auto minCos = p.MaxQ / mgl;
-                if (-cos(x.theta) <= minCos)
-                    pumpEnergy = true;
-            }
-
-            if (pumpEnergy)
-            {
-                auto dE = Egoal - E;
-
-                // Expected damping
-                auto tDamp = -p.b1 * x.dTheta;
-                auto Ugoal = -tDamp + m_energyGain * dE * x.dTheta;
-                auto U = Ugoal;
-                if(p.MaxQ > 0)
-                    U = std::min(p.MaxQ, std::max(-p.MaxQ, Ugoal));
-                return U;
-            }
-            else
-            {
-                // Switch to a position error controller
-                // or maybe a bang-bang?
-                return 0;
-            }
-        }
-    }
-
     void stepSimulation()
     {
-        auto& params = m_pendulumParams;
-        auto& x = m_pendulumState;
-
-        auto u = computeControllerInput();
-
-        auto b = m_pendulumParams.b1;
-        auto torque = u -params.b1 * x.dTheta - sin(x.theta) * g * params.l1;
-
-        const auto invInertia = m_pendulumParams.I1 > 0 ? (1 / m_pendulumParams.I1) : 0;
-        auto ddq = torque * invInertia;
-
-        x.theta += m_stepDt * x.dTheta + 0.5 *ddq * m_stepDt * m_stepDt;
-        x.dTheta += ddq * m_stepDt;
-    }
-
-    static constexpr auto g = 9.81;
-
-    static int squirrelNoise(int position, int seed = 0)
-    {
-        constexpr unsigned int BIT_NOISE1 = 0xB5297A4D;
-        constexpr unsigned int BIT_NOISE2 = 0x68E31DA4;
-        constexpr unsigned int BIT_NOISE3 = 0x1B56C4E9;
-
-        int mangled = position;
-        mangled *= BIT_NOISE1;
-        mangled += seed;
-        mangled ^= (mangled >> 8);
-        mangled *= BIT_NOISE2;
-        mangled ^= (mangled << 8);
-        mangled *= BIT_NOISE3;
-        mangled ^= (mangled >> 8);
-        return mangled;
-    }
-
-    struct squirrelRng
-    {
-        int rand()
+        auto action = cart.updateController(m_rng);
+        cart.step(m_stepDt, action);
+        if (!testTrack.isValidPos(cart.m_state.pos) || testTrack.isGoal(cart.m_state.pos))
         {
-            return squirrelNoise(state++);
+            randomizeStart();
         }
+    }
+    
+    SquirrelRng m_rng;
 
-        float uniform()
-        {
-            auto i = rand();
-            return float(i & ((1 << 24) - 1)) / (1 << 24);
-        }
-
-        int state = 0;
-    } m_rng;
-
-    void plotPendulum()
+    void plotState()
     {
-        plotCircle<20>("Origin", 0, 0, 0.1f);
-        double x = m_pendulumParams.l1 * sin(m_pendulumState.theta);
-        double y = -m_pendulumParams.l1 * cos(m_pendulumState.theta);
-        plotLine("axis", { 0, 0 }, { x, y });
-        plotCircle<20>("End point", x, y, 0.1f);
+        testTrack.draw();
+        cart.draw();
     }
 };
 
 // Main code
 int main(int, char**)
 {
-    PendulumApp app;
+    CartApp app;
     if (!app.init())
         return -1;
 
