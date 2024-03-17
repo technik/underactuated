@@ -159,12 +159,12 @@ struct LinearTrack
 struct CartPolicy
 {
     using Action = DifferentialCart::Input;
-    virtual DifferentialCart::Input& computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) = 0;
+    virtual Action computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) = 0;
 };
 
 struct RandomPolicy : CartPolicy
 {
-    Action& computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override
+    Action computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override
     {
         Action action;
         action.dvLeft = rng.uniform() - 0.5;
@@ -189,7 +189,7 @@ struct LinearPolicy : CartPolicy
         }
     }
 
-    Action& computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override
+    Action computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override
     {
         // Computen input vector from agent state
         auto& state = agent.m_state;
@@ -262,8 +262,11 @@ public:
                 for (int i = 0; i < m_iterationsPerEpoch; ++i)
                 {
                     randomizeStart();
-                    while(stepSimulation())
-                    { }
+                    bool alive = true;
+                    while (alive)
+                    {
+                        alive = stepSimulation();
+                    }
 
                     totalScore += m_lastScore;
                 }
@@ -281,6 +284,11 @@ public:
             }
         }
 
+        DrawSimulationState();
+    }
+
+    void DrawSimulationState()
+    {
         // Draw simulation state
         if (ImGui::Begin("Simulation"))
         {
@@ -393,7 +401,7 @@ private:
         bool timeOut = m_runTime > m_timeOut;
         if (timeOut || dead || win)
         {
-            m_lastScore = testTrack.length + cart.m_state.pos.x();
+            m_lastScore = testTrack.length * 0.5 + cart.m_state.pos.x();
             randomizeStart();
             m_runTime = 0;
             return false;
