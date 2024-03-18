@@ -175,14 +175,16 @@ struct RandomPolicy : CartPolicy
 
 struct LinearPolicy : CartPolicy
 {
-    Eigen::Matrix<float, 2, 6> weights;
-    Eigen::Vector<float, 6> inputVector;
+    static inline constexpr size_t kNumOutputs = 2;
+    static inline constexpr size_t kNumInputs = 6; // 1 + state vector size
+    Eigen::Matrix<float, kNumOutputs, kNumInputs> weights;
+    Eigen::Vector<float, kNumInputs> inputVector;
 
     void randomizeWeights(SquirrelRng& rng)
     {
-        for (int i = 0; i < 2; ++i)
+        for (int i = 0; i < kNumOutputs; ++i)
         {
-            for (int j = 0; j < 6; ++j)
+            for (int j = 0; j < kNumInputs; ++j)
             {
                 weights(i, j) = rng.uniform() * 2 - 1;
             }
@@ -207,6 +209,41 @@ struct LinearPolicy : CartPolicy
         action.dvLeft = activations[0];
         action.dvRight = activations[1];
         return action;
+    }
+
+    void DrawActivations()
+    {
+        if (ImGui::Begin("Activations"))
+        {
+            float size = float(kNumOutputs + 1);
+            if (ImPlot::BeginPlot("Cart", ImVec2(-1, -1), ImPlotFlags_Equal))
+            {
+                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
+                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
+                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
+                ImPlot::SetupAxisLimits(ImAxis_Y1, -size, size, ImGuiCond_Always);
+                for (int i = 0; i < kNumOutputs; ++i)
+                {
+                    float outH = 1 - i;
+                    for (int j = 0; j < kNumInputs; ++j)
+                    {
+                        float inH = kNumInputs / 2 - j;
+                        float activation = weights(i, j) * inputVector[j];
+                        float r = min(1.f, max(0.f, -activation));
+                        float g = min(1.f, max(0.f, 1.f - abs(activation)));
+                        float b = min(1.f, max(0.f, activation));
+                        ImPlot::PushStyleColor(ImPlotCol_Line, ImVec4(r, g, b, 1));
+                        std::stringstream label;
+                        label << "synapse" << i << "," << j;
+                        plotLine(label.str().c_str(), Vec2d(-1, inH), Vec2d(1, outH));
+                        ImPlot::PopStyleColor();
+                    }
+
+                }
+            }
+            ImPlot::EndPlot();
+        }
+        ImGui::End();
     }
 };
 
@@ -285,6 +322,7 @@ public:
         }
 
         DrawSimulationState();
+        policy.DrawActivations();
     }
 
     void DrawSimulationState()
