@@ -114,6 +114,39 @@ void MLPPolicy::randomizeWeights(SquirrelRng& rng, float amplitude)
     }
 }
 
+MLPPolicy MLPPolicy::generateVariation(math::SquirrelRng& rng, float variationStep) const
+{
+    MLPPolicy variation = *this;
+    // Input layer
+    for (int i = 0; i < kHiddenSize; ++i)
+    {
+        for (int j = 0; j < kNumInputs + 1; ++j)
+        {
+            variation.inputWeights(i, j) += variationStep * (rng.uniform() * 2 - 1);
+        }
+    }
+
+    // Hidden layer
+    for (int i = 0; i < kHiddenSize; ++i)
+    {
+        for (int j = 0; j < kHiddenSize + 1; ++j)
+        {
+            variation.hiddenWeights(i, j) += variationStep * (rng.uniform() * 2 - 1);
+        }
+    }
+
+    // Output layer
+    for (int i = 0; i < kNumOutputs; ++i)
+    {
+        for (int j = 0; j < kHiddenSize + 1; ++j)
+        {
+            variation.outputWeights(i, j) += variationStep * (rng.uniform() * 2 - 1);
+        }
+    }
+
+    return variation;
+}
+
 auto MLPPolicy::computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) -> Action
 {
     // Computen input vector from agent state

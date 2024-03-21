@@ -48,8 +48,10 @@ struct MLPPolicy : CartPolicy
     Eigen::Vector<float, kNumOutputs> outputActivations;
 
     void randomizeWeights(math::SquirrelRng& rng, float amplitude);
+    MLPPolicy generateVariation(math::SquirrelRng& rng, float variationStep) const;
 
     Action computeAction(math::SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override;
 
     void DrawActivations();
+
 };

@@ -51,11 +51,13 @@ public:
     // LinearPolicy policy;
     // LinearPolicy bestPolicy;
     float weightAmplitude = 1;
+    float gradientStep = 0.01;
 
     enum class SimState
     {
         Running,
-        Training,
+        RandomExplore,
+        SGD,
         Stopped
     } m_simState = SimState::Stopped;
 
@@ -85,12 +87,17 @@ public:
         {
             advanceSimulation();
         }
-        if (m_simState == SimState::Training)
+        if (m_simState == SimState::RandomExplore)
         {
+            // Do a random exploration first
+            
             // Do one epoch per step
-            if (m_maxEpoch == 0 || m_curEpoch < m_maxEpoch)
+            if (m_curEpoch < m_maxRandomEpoch)
             {
+                // Generate a random gradient
                 policy.randomizeWeights(m_rng, weightAmplitude);
+
+                // Evaluate a batch
                 double totalScore = 0;
                 for (int i = 0; i < m_iterationsPerEpoch; ++i)
                 {
@@ -103,6 +110,45 @@ public:
 
                     totalScore += m_lastScore;
                 }
+
+                // Update the policy
+                if (totalScore > m_bestScore)
+                {
+                    m_bestScore = totalScore;
+                    bestPolicy = policy;
+                }
+                ++m_curEpoch;
+            }
+            else
+            {
+                policy = bestPolicy;
+                m_curEpoch = 0;
+                m_simState = SimState::SGD;
+            }
+        }
+        else if (m_simState == SimState::SGD)
+        {
+            // Do one epoch per step
+            if (m_maxSGDEpoch == 0 || m_curEpoch < m_maxSGDEpoch)
+            {
+                // Generate a random gradient
+                policy = bestPolicy.generateVariation(m_rng, gradientStep);
+
+                // Evaluate a batch
+                double totalScore = 0;
+                for (int i = 0; i < m_iterationsPerEpoch; ++i)
+                {
+                    randomizeStart();
+                    bool alive = true;
+                    while (alive)
+                    {
+                        alive = stepSimulation();
+                    }
+
+                    totalScore += m_lastScore;
+                }
+
+                // Update the policy
                 if (totalScore > m_bestScore)
                 {
                     m_bestScore = totalScore;
@@ -145,7 +191,7 @@ public:
     {
         if (ImGui::Button("Train"))
         {
-            m_simState = SimState::Training;
+            m_simState = SimState::RandomExplore;
             m_curEpoch = 0;
         }
         if (ImGui::Button("Play"))
@@ -168,6 +214,7 @@ public:
             ImGui::InputDouble("Axis Len", &cart.m_params.axisLen);
             ImGui::InputDouble("Max vel", &cart.m_params.maxWheelVel);
             ImGui::InputFloat("Amplitude", &weightAmplitude);
+            ImGui::InputFloat("SGD step", &gradientStep);
 
             if (ImGui::Button("Generate"))
             {
@@ -182,7 +229,8 @@ public:
 
         if (ImGui::CollapsingHeader("Training"))
         {
-            ImGui::InputInt("training epochs", &m_maxEpoch);
+            ImGui::InputInt("explore epochs", &m_maxRandomEpoch);
+            ImGui::InputInt("descent epochs", &m_maxSGDEpoch);
             ImGui::InputInt("iterations/epoch ", &m_iterationsPerEpoch);
             ImGui::Text("Epoch: %d", m_curEpoch);
             ImGui::Text("Last Score: %f", (float)m_lastScore);
@@ -210,7 +258,8 @@ private:
     double m_lastScore = 0;
     double m_bestScore = 0;
     int m_curEpoch = 0;
-    int m_maxEpoch = 1000;
+    int m_maxRandomEpoch = 1000;
+    int m_maxSGDEpoch = 1000;
     int m_iterationsPerEpoch = 40;
 
     void advanceSimulation()
