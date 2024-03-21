@@ -4,13 +4,11 @@
 #include "implot.h"
 #include <cmath>
 #include "app.h"
-#include <math/vector.h>
 #include <math/matrix.h>
+#include <math/noise.h>
+#include <math/vector.h>
 #include <numbers>
 #include <random>
-
-static constexpr auto Pi = std::numbers::pi_v<double>;
-static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
 
 using namespace math;
 
@@ -321,21 +319,7 @@ private:
         return mangled;
     }
 
-    struct squirrelRng
-    {
-        int rand()
-        {
-            return squirrelNoise(state++);
-        }
-
-        float uniform()
-        {
-            auto i = rand();
-            return float(i & ((1 << 24) - 1)) / (1 << 24);
-        }
-
-        int state = 0;
-    } m_rng;
+    SquirrelRng m_rng;
 
     void plotPendulum()
     {

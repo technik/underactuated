@@ -86,7 +86,7 @@ struct Circle : RenderShape
         float y[kNumSegments + 1];
         for (int i = 0; i < kNumSegments + 1; ++i)
         {
-            auto theta = i * TwoPi / kNumSegments;
+            auto theta = i * math::TwoPi / kNumSegments;
             x[i] = m_radius * cos(theta) + m_pos.x();
             y[i] = m_radius * sin(theta) + m_pos.y();
         }

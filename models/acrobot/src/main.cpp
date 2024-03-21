@@ -10,9 +10,6 @@
 #include <numbers>
 #include <random>
 
-static constexpr auto Pi = std::numbers::pi_v<double>;
-static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
-
 using namespace math;
 
 class AcrobotApp : public App

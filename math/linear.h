@@ -18,9 +18,13 @@
 #pragma once
 
 #include <cmath>
+#include <numbers>
 
 namespace math
 {
+	static constexpr auto Pi = std::numbers::pi_v<double>;
+	static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
+
 	template<class T>
 	auto lerp(const T& a, const T& b, float x)
 	{

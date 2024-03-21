@@ -46,6 +46,15 @@ macro(compile_HLSL_flags _SOURCE SOURCE_LIST OUTPUT_LIST _PROFILE)
         )
 endmacro()
 
+# Common libs
+file(GLOB_RECURSE coreSrc "math/*.h" libs/imgui/*.cpp libs/implot/*.cpp)
+GroupSources(coreSrc)
+add_library(core ${coreSrc})
+target_include_directories(core PUBLIC
+    .
+    libs/imgui
+    libs/implot)
+
 add_subdirectory(models/acrobot)
 add_subdirectory(models/pendulum)
 add_subdirectory(models/liquid1)

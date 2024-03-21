@@ -2,134 +2,19 @@
 
 #include "imgui.h"
 #include "implot.h"
+#include "plot.h"
 #include <cmath>
 #include "app.h"
 #include <math/vector.h>
 #include <math/matrix.h>
-#include <numbers>
 #include <random>
+
+#include "Agent.h"
+#include "policy.h"
 
 #include <libs/eigen/Eigen/Core>
 
-static constexpr auto Pi = std::numbers::pi_v<double>;
-static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
-
 using namespace math;
-
-namespace // Unnamed drawing utilities
-{
-    // Auxiliary drawing
-    template<int numSegments>
-    static void plotCircle(const char* name, float x0, float y0, float radius)
-    {
-        static_assert(numSegments > 1);
-        float x[numSegments + 1];
-        float y[numSegments + 1];
-        for (int i = 0; i < numSegments + 1; ++i)
-        {
-            auto theta = i * TwoPi / numSegments;
-            x[i] = radius * cos(theta) + x0;
-            y[i] = radius * sin(theta) + y0;
-        }
-        ImPlot::PlotLine(name, x, y, numSegments + 1);
-    }
-
-    static void plotLine(const char* name, const Vec2d& a, const Vec2d& b)
-    {
-        float x[2] = { float(a.x()), float(b.x()) };
-        float y[2] = { float(a.y()), float(b.y()) };
-
-        ImPlot::PlotLine(name, x, y, 2);
-    }
-}
-
-namespace // Math utils
-{
-    static constexpr auto g = 9.81;
-
-    static int squirrelNoise(int position, int seed = 0)
-    {
-        constexpr unsigned int BIT_NOISE1 = 0xB5297A4D;
-        constexpr unsigned int BIT_NOISE2 = 0x68E31DA4;
-        constexpr unsigned int BIT_NOISE3 = 0x1B56C4E9;
-
-        int mangled = position;
-        mangled *= BIT_NOISE1;
-        mangled += seed;
-        mangled ^= (mangled >> 8);
-        mangled *= BIT_NOISE2;
-        mangled ^= (mangled << 8);
-        mangled *= BIT_NOISE3;
-        mangled ^= (mangled >> 8);
-        return mangled;
-    }
-
-    struct SquirrelRng
-    {
-        int rand()
-        {
-            return squirrelNoise(state++);
-        }
-
-        float uniform()
-        {
-            auto i = rand();
-            return float(i & ((1 << 24) - 1)) / (1 << 24);
-        }
-
-        int state = 0;
-    };
-}
-
-struct DifferentialCart
-{
-    struct Params
-    {
-        double maxWheelVel = 2;
-        double axisLen = 0.2;
-    } m_params;
-
-    struct State
-    {
-        double vRight = 0;
-        double vLeft = 0;
-        Vec2d pos = {};
-        double orient = 0;
-    } m_state;
-
-    struct Input
-    {
-        double dvRight = 0;
-        double dvLeft = 0;
-    };
-
-    void step(double dt, const Input& action)
-    {
-        // Basic Euler integration
-        double meanVel = 0.5 * (m_state.vRight + m_state.vLeft);
-        double diffVel = (m_state.vRight - m_state.vLeft) / m_params.axisLen;
-        double ct = cos(m_state.orient);
-        double st = sin(m_state.orient);
-        m_state.pos += (dt * meanVel) * Vec2d(ct, st);
-        m_state.orient += dt * diffVel;
-        if (m_state.orient < -TwoPi)
-            m_state.orient += TwoPi;
-        if (m_state.orient > TwoPi)
-            m_state.orient -= TwoPi;
-
-        // Apply the action
-        m_state.vRight = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, m_state.vRight + action.dvRight));
-        m_state.vLeft = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, m_state.vLeft + action.dvLeft));
-    }
-
-    void draw()
-    {
-        float radius = float(m_params.axisLen * 0.5);
-        plotCircle<20>("bot", m_state.pos.x(), m_state.pos.y(), radius);
-        Vec2d lookAt = m_state.pos + radius * Vec2d(cos(m_state.orient), sin(m_state.orient));
-        plotLine("botDir", m_state.pos, lookAt);
-    }
-};
 
 struct LinearTrack
 {
@@ -156,105 +41,16 @@ struct LinearTrack
     }
 };
 
-struct CartPolicy
-{
-    using Action = DifferentialCart::Input;
-    virtual Action computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) = 0;
-};
-
-struct RandomPolicy : CartPolicy
-{
-    Action computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override
-    {
-        Action action;
-        action.dvLeft = rng.uniform() - 0.5;
-        action.dvRight = rng.uniform() - 0.5;
-        return action;
-    }
-};
-
-struct LinearPolicy : CartPolicy
-{
-    static inline constexpr size_t kNumOutputs = 2;
-    static inline constexpr size_t kNumInputs = 6; // 1 + state vector size
-    Eigen::Matrix<float, kNumOutputs, kNumInputs> weights;
-    Eigen::Vector<float, kNumInputs> inputVector;
-
-    void randomizeWeights(SquirrelRng& rng)
-    {
-        for (int i = 0; i < kNumOutputs; ++i)
-        {
-            for (int j = 0; j < kNumInputs; ++j)
-            {
-                weights(i, j) = rng.uniform() * 2 - 1;
-            }
-        }
-    }
-
-    Action computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override
-    {
-        // Computen input vector from agent state
-        auto& state = agent.m_state;
-        inputVector[0] = state.orient;
-        inputVector[1] = state.pos.x();
-        inputVector[2] = state.pos.y();
-        inputVector[3] = state.vLeft;
-        inputVector[4] = state.vRight;
-        inputVector[5] = 1; // Bias
-
-        // Apply the single neuron layer
-        Eigen::Vector<float, 2> activations = weights * inputVector;
-
-        Action action;
-        action.dvLeft = activations[0];
-        action.dvRight = activations[1];
-        return action;
-    }
-
-    void DrawActivations()
-    {
-        if (ImGui::Begin("Activations"))
-        {
-            float size = float(kNumOutputs + 1);
-            if (ImPlot::BeginPlot("Cart", ImVec2(-1, -1), ImPlotFlags_Equal))
-            {
-                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
-                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
-                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
-                ImPlot::SetupAxisLimits(ImAxis_Y1, -size, size, ImGuiCond_Always);
-                for (int i = 0; i < kNumOutputs; ++i)
-                {
-                    float outH = 1 - i;
-                    for (int j = 0; j < kNumInputs; ++j)
-                    {
-                        float inH = kNumInputs / 2 - j;
-                        float activation = weights(i, j) * inputVector[j];
-                        float r = min(1.f, max(0.f, -activation));
-                        float g = min(1.f, max(0.f, 1.f - abs(activation)));
-                        float b = min(1.f, max(0.f, activation));
-                        ImPlot::PushStyleColor(ImPlotCol_Line, ImVec4(r, g, b, 1));
-                        std::stringstream label;
-                        label << "synapse" << i << "," << j;
-                        plotLine(label.str().c_str(), Vec2d(-1, inH), Vec2d(1, outH));
-                        ImPlot::PopStyleColor();
-                    }
-
-                }
-            }
-            ImPlot::EndPlot();
-        }
-        ImGui::End();
-    }
-};
-
 class CartApp : public App
 {
 public:
     DifferentialCart cart;
     LinearTrack testTrack;
-    //RandomPolicy policy;
-    LinearPolicy policy;
-    LinearPolicy bestPolicy;
+    MLPPolicy policy;
+    MLPPolicy bestPolicy;
+    // LinearPolicy policy;
+    // LinearPolicy bestPolicy;
+    float weightAmplitude = 1;
 
     enum class SimState
     {
@@ -266,7 +62,7 @@ public:
     CartApp()
     {
         randomizeStart();
-        bestPolicy.randomizeWeights(m_rng);
+        bestPolicy.randomizeWeights(m_rng, weightAmplitude);
         policy = bestPolicy;
         cart.m_state.pos.y() = 0; // Start at the center pos first
     }
@@ -294,7 +90,7 @@ public:
             // Do one epoch per step
             if (m_maxEpoch == 0 || m_curEpoch < m_maxEpoch)
             {
-                policy.randomizeWeights(m_rng);
+                policy.randomizeWeights(m_rng, weightAmplitude);
                 double totalScore = 0;
                 for (int i = 0; i < m_iterationsPerEpoch; ++i)
                 {
@@ -354,7 +150,6 @@ public:
         }
         if (ImGui::Button("Play"))
         {
-            randomizeStart();
             m_simState = SimState::Running;
             policy = bestPolicy;
         }
@@ -365,13 +160,14 @@ public:
         if (ImGui::Button("Reset training"))
         {
             m_bestScore = 0;
-            bestPolicy.randomizeWeights(m_rng);
+            bestPolicy.randomizeWeights(m_rng, weightAmplitude);
         }
         // Plot params
         if (ImGui::CollapsingHeader("Params"))
         {
             ImGui::InputDouble("Axis Len", &cart.m_params.axisLen);
             ImGui::InputDouble("Max vel", &cart.m_params.maxWheelVel);
+            ImGui::InputFloat("Amplitude", &weightAmplitude);
 
             if (ImGui::Button("Generate"))
             {
@@ -379,7 +175,7 @@ public:
             }
             if (ImGui::Button("Randomize Policy"))
             {
-                policy.randomizeWeights(m_rng);
+                policy.randomizeWeights(m_rng, weightAmplitude);
                 randomizeStart();
             }
         }
@@ -408,7 +204,7 @@ public:
 
 private:
     double m_accumTime = 0;
-    double m_stepDt = 0.001;
+    double m_stepDt = 0.04;
     double m_runTime = 0;
     double m_timeOut = 10;
     double m_lastScore = 0;
