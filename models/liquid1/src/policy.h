@@ -49,6 +49,7 @@ struct MLPPolicy : CartPolicy
 
     void randomizeWeights(math::SquirrelRng& rng, float amplitude);
     MLPPolicy generateVariation(math::SquirrelRng& rng, float variationStep) const;
+    void applyVariation(const MLPPolicy& delta, float scale);
 
     Action computeAction(math::SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override;
 

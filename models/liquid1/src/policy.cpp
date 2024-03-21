@@ -122,7 +122,7 @@ MLPPolicy MLPPolicy::generateVariation(math::SquirrelRng& rng, float variationSt
     {
         for (int j = 0; j < kNumInputs + 1; ++j)
         {
-            variation.inputWeights(i, j) += variationStep * (rng.uniform() * 2 - 1);
+            variation.inputWeights(i, j) = variationStep * (rng.uniform() * 2 - 1);
         }
     }
 
@@ -131,7 +131,7 @@ MLPPolicy MLPPolicy::generateVariation(math::SquirrelRng& rng, float variationSt
     {
         for (int j = 0; j < kHiddenSize + 1; ++j)
         {
-            variation.hiddenWeights(i, j) += variationStep * (rng.uniform() * 2 - 1);
+            variation.hiddenWeights(i, j) = variationStep * (rng.uniform() * 2 - 1);
         }
     }
 
@@ -140,11 +140,41 @@ MLPPolicy MLPPolicy::generateVariation(math::SquirrelRng& rng, float variationSt
     {
         for (int j = 0; j < kHiddenSize + 1; ++j)
         {
-            variation.outputWeights(i, j) += variationStep * (rng.uniform() * 2 - 1);
+            variation.outputWeights(i, j) = variationStep * (rng.uniform() * 2 - 1);
         }
     }
 
     return variation;
+}
+
+void MLPPolicy::applyVariation(const MLPPolicy& delta, float scale)
+{
+    // Input layer
+    for (int i = 0; i < kHiddenSize; ++i)
+    {
+        for (int j = 0; j < kNumInputs + 1; ++j)
+        {
+            inputWeights(i, j) += scale * delta.inputWeights(i, j);
+        }
+    }
+
+    // Hidden layer
+    for (int i = 0; i < kHiddenSize; ++i)
+    {
+        for (int j = 0; j < kHiddenSize + 1; ++j)
+        {
+            hiddenWeights(i, j) += scale * delta.hiddenWeights(i, j);
+        }
+    }
+
+    // Output layer
+    for (int i = 0; i < kNumOutputs; ++i)
+    {
+        for (int j = 0; j < kHiddenSize + 1; ++j)
+        {
+            outputWeights(i, j) += scale * delta.outputWeights(i, j);
+        }
+    }
 }
 
 auto MLPPolicy::computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) -> Action

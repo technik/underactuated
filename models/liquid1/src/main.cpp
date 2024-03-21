@@ -44,10 +44,11 @@ struct LinearTrack
 class CartApp : public App
 {
 public:
+    using Policy = MLPPolicy;
+
     DifferentialCart cart;
     LinearTrack testTrack;
-    MLPPolicy policy;
-    MLPPolicy bestPolicy;
+    Policy m_bestPolicy;
     // LinearPolicy policy;
     // LinearPolicy bestPolicy;
     float weightAmplitude = 1;
@@ -64,8 +65,7 @@ public:
     CartApp()
     {
         randomizeStart();
-        bestPolicy.randomizeWeights(m_rng, weightAmplitude);
-        policy = bestPolicy;
+        m_bestPolicy.randomizeWeights(m_rng, weightAmplitude);
         cart.m_state.pos.y() = 0; // Start at the center pos first
     }
 
@@ -95,33 +95,22 @@ public:
             if (m_curEpoch < m_maxRandomEpoch)
             {
                 // Generate a random gradient
+                auto policy = m_bestPolicy;
                 policy.randomizeWeights(m_rng, weightAmplitude);
 
                 // Evaluate a batch
-                double totalScore = 0;
-                for (int i = 0; i < m_iterationsPerEpoch; ++i)
-                {
-                    randomizeStart();
-                    bool alive = true;
-                    while (alive)
-                    {
-                        alive = stepSimulation();
-                    }
-
-                    totalScore += m_lastScore;
-                }
+                float totalScore = EvaluateBatch(policy);
 
                 // Update the policy
                 if (totalScore > m_bestScore)
                 {
                     m_bestScore = totalScore;
-                    bestPolicy = policy;
+                    m_bestPolicy = policy;
                 }
                 ++m_curEpoch;
             }
             else
             {
-                policy = bestPolicy;
                 m_curEpoch = 0;
                 m_simState = SimState::SGD;
             }
@@ -132,39 +121,58 @@ public:
             if (m_maxSGDEpoch == 0 || m_curEpoch < m_maxSGDEpoch)
             {
                 // Generate a random gradient
-                policy = bestPolicy.generateVariation(m_rng, gradientStep);
+                auto delta = m_bestPolicy.generateVariation(m_rng, gradientStep);
+                auto policy = m_bestPolicy;
+                policy.applyVariation(delta, 1.f);
 
                 // Evaluate a batch
-                double totalScore = 0;
-                for (int i = 0; i < m_iterationsPerEpoch; ++i)
-                {
-                    randomizeStart();
-                    bool alive = true;
-                    while (alive)
-                    {
-                        alive = stepSimulation();
-                    }
+                float totalScore = EvaluateBatch(policy);
 
-                    totalScore += m_lastScore;
+                if (m_useSGD)
+                {
+                    float dE = totalScore - m_bestScore;
+                    // Apply gradient scaled correction
+                    policy = m_bestPolicy;
+                    policy.applyVariation(delta, 0.1 * dE);
+
+                    // Re-evaluate
+                    totalScore = EvaluateBatch(policy);
                 }
 
                 // Update the policy
                 if (totalScore > m_bestScore)
                 {
                     m_bestScore = totalScore;
-                    bestPolicy = policy;
+                    m_bestPolicy = policy;
                 }
+
                 ++m_curEpoch;
             }
             else
             {
-                policy = bestPolicy;
                 m_simState = SimState::Running;
             }
         }
 
         DrawSimulationState();
-        policy.DrawActivations();
+        m_bestPolicy.DrawActivations();
+    }
+
+    float EvaluateBatch(MLPPolicy& policy)
+    {
+        double totalScore = 0;
+        for (int i = 0; i < m_iterationsPerEpoch; ++i)
+        {
+            randomizeStart();
+            bool alive = true;
+            while (alive)
+            {
+                alive = stepSimulation(policy);
+            }
+
+            totalScore += m_lastScore;
+        }
+        return totalScore;
     }
 
     void DrawSimulationState()
@@ -197,7 +205,6 @@ public:
         if (ImGui::Button("Play"))
         {
             m_simState = SimState::Running;
-            policy = bestPolicy;
         }
         if (ImGui::Button("Stop"))
         {
@@ -206,7 +213,7 @@ public:
         if (ImGui::Button("Reset training"))
         {
             m_bestScore = 0;
-            bestPolicy.randomizeWeights(m_rng, weightAmplitude);
+            m_bestPolicy.randomizeWeights(m_rng, weightAmplitude);
         }
         // Plot params
         if (ImGui::CollapsingHeader("Params"))
@@ -220,11 +227,6 @@ public:
             {
                 cart.m_params.axisLen = 0.1 + 0.4 * m_rng.uniform();
             }
-            if (ImGui::Button("Randomize Policy"))
-            {
-                policy.randomizeWeights(m_rng, weightAmplitude);
-                randomizeStart();
-            }
         }
 
         if (ImGui::CollapsingHeader("Training"))
@@ -232,6 +234,7 @@ public:
             ImGui::InputInt("explore epochs", &m_maxRandomEpoch);
             ImGui::InputInt("descent epochs", &m_maxSGDEpoch);
             ImGui::InputInt("iterations/epoch ", &m_iterationsPerEpoch);
+            ImGui::Checkbox("Use SGD", &m_useSGD);
             ImGui::Text("Epoch: %d", m_curEpoch);
             ImGui::Text("Last Score: %f", (float)m_lastScore);
             ImGui::Text("Best Score: %f", (float)m_bestScore / m_iterationsPerEpoch);
@@ -257,10 +260,11 @@ private:
     double m_timeOut = 10;
     double m_lastScore = 0;
     double m_bestScore = 0;
+    bool m_useSGD = true;
     int m_curEpoch = 0;
-    int m_maxRandomEpoch = 1000;
-    int m_maxSGDEpoch = 1000;
-    int m_iterationsPerEpoch = 40;
+    int m_maxRandomEpoch = 2000;
+    int m_maxSGDEpoch = 2000;
+    int m_iterationsPerEpoch = 100;
 
     void advanceSimulation()
     {
@@ -269,12 +273,12 @@ private:
         {
             m_accumTime -= m_stepDt;
 
-            bool stillAlive = stepSimulation();
+            bool stillAlive = stepSimulation(m_bestPolicy);
         }
     }
 
     // returns whether the simulation is ongoing
-    bool stepSimulation()
+    bool stepSimulation(Policy& policy)
     {
         m_runTime += m_stepDt;
         auto action = policy.computeAction(m_rng, cart, testTrack);
