@@ -252,7 +252,7 @@ public:
 
 private:
     double m_accumTime = 0;
-    double m_stepDt = 0.04;
+    double m_stepDt = 0.01;
     double m_runTime = 0;
     double m_timeOut = 10;
     double m_lastScore = 0;

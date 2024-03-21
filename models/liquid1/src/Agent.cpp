@@ -25,8 +25,10 @@ void DifferentialCart::step(double dt, const Input& action)
         m_state.orient -= math::TwoPi;
 
     // Apply the action
-    m_state.vRight = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, m_state.vRight + action.dvRight));
-    m_state.vLeft = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, m_state.vLeft + action.dvLeft));
+    //m_state.vRight = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, m_state.vRight + action.dvRight));
+    //m_state.vLeft = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, m_state.vLeft + action.dvLeft));
+    m_state.vRight = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, action.dvRight));
+    m_state.vLeft = max(-m_params.maxWheelVel, min(m_params.maxWheelVel, action.dvLeft));
 }
 
 void DifferentialCart::draw()
