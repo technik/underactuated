@@ -53,6 +53,7 @@ public:
     // LinearPolicy bestPolicy;
     float weightAmplitude = 1;
     float gradientStep = 0.01;
+    float learnStep = 0.1;
 
     enum class SimState
     {
@@ -133,7 +134,7 @@ public:
                     float dE = totalScore - m_bestScore;
                     // Apply gradient scaled correction
                     policy = m_bestPolicy;
-                    policy.applyVariation(delta, 0.1 * dE);
+                    policy.applyVariation(delta, learnStep * dE);
 
                     // Re-evaluate
                     totalScore = EvaluateBatch(policy);
@@ -221,7 +222,8 @@ public:
             ImGui::InputDouble("Axis Len", &cart.m_params.axisLen);
             ImGui::InputDouble("Max vel", &cart.m_params.maxWheelVel);
             ImGui::InputFloat("Amplitude", &weightAmplitude);
-            ImGui::InputFloat("SGD step", &gradientStep);
+            ImGui::InputFloat("SGD diff step", &gradientStep);
+            ImGui::InputFloat("SGD learn step", &learnStep);
 
             if (ImGui::Button("Generate"))
             {

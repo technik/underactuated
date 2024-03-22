@@ -10,6 +10,18 @@
 
 using namespace math;
 
+namespace
+{
+    ImVec4 mapColor(float intensity)
+    {
+        float r = min(1.f, max(0.f, -intensity));
+        float g = min(1.f, max(0.f, intensity));
+        float b = 0;
+        float a = min(1.f, abs(intensity));
+        return ImVec4(r, g, b, a);
+    }
+}
+
 auto RandomPolicy::computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) -> Action
 {
     Action action;
@@ -222,8 +234,9 @@ void MLPPolicy::DrawActivations()
         float size = kHiddenSize/2 + 0.5f;
         if (ImPlot::BeginPlot("Cart", ImVec2(-1, -1), ImPlotFlags_Equal | ImPlotFlags_NoLegend))
         {
+            const float nodeRadius = 0.25f;
             ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
-            ImPlot::SetupAxisLimits(ImAxis_X1, -2.5, 2.5, ImGuiCond_Always);
+            ImPlot::SetupAxisLimits(ImAxis_X1, -3, 3, ImGuiCond_Always);
             ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
             ImPlot::SetupAxisLimits(ImAxis_Y1, -size, size, ImGuiCond_Always);
 
@@ -233,15 +246,15 @@ void MLPPolicy::DrawActivations()
                 for (int j = 0; j < kNumInputs; ++j)
                 {
                     float inH = kNumInputs / 2 - 0.5 - j;
-                    float activation = inputWeights(i, j) * inputVector[j] + inputWeights(i, kNumInputs);
-                    float r = min(1.f, max(0.f, -activation));
-                    float g = min(1.f, max(0.f, activation));
-                    float b = 0;
-                    float a = min(1.f, abs(activation));
-                    ImPlot::PushStyleColor(ImPlotCol_Line, ImVec4(r, g, b, a));
+                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(inputWeights(i, j)));
                     std::stringstream label;
                     label << "synapse_i_" << i << "," << j;
                     plotLine(label.str().c_str(), Vec2d(-2, inH), Vec2d(-1, outH));
+                    ImPlot::PopStyleColor();
+                    label << "c";
+                    float activation = inputWeights(i, j) * inputVector[j] + inputWeights(i, kNumInputs);
+                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
+                    plotCircle<8>(label.str().c_str(), -1.f, outH, nodeRadius);
                     ImPlot::PopStyleColor();
                 }
 
@@ -253,15 +266,15 @@ void MLPPolicy::DrawActivations()
                 for (int j = 0; j < kHiddenSize; ++j)
                 {
                     float inH = kHiddenSize / 2 - 0.5 - j;
-                    float activation = hiddenWeights(i, j) * inputActivations[j] + inputWeights(i, kHiddenSize);
-                    float r = min(1.f, max(0.f, -activation));
-                    float g = min(1.f, max(0.f, activation));
-                    float b = 0;
-                    float a = min(1.f, abs(activation));
-                    ImPlot::PushStyleColor(ImPlotCol_Line, ImVec4(r, g, b, a));
+                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(hiddenWeights(i, j)));
                     std::stringstream label;
                     label << "synapse_h_" << i << "," << j;
                     plotLine(label.str().c_str(), Vec2d(-1, inH), Vec2d(0, outH));
+                    ImPlot::PopStyleColor();
+                    label << "c";
+                    float activation = hiddenWeights(i, j) * inputActivations[j] + inputWeights(i, kHiddenSize);
+                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
+                    plotCircle<8>(label.str().c_str(), 0.f, outH, nodeRadius);
                     ImPlot::PopStyleColor();
                 }
 
@@ -269,19 +282,19 @@ void MLPPolicy::DrawActivations()
 
             for (int i = 0; i < kNumOutputs; ++i)
             {
-                float outH = 0.5 - i;
+                float outH = 2 * (0.5 - i);
                 for (int j = 0; j < kHiddenSize; ++j)
                 {
                     float inH = kHiddenSize / 2 - 0.5 - j;
-                    float activation = outputWeights(i, j) * hiddenActivations[j] + inputWeights(i, kHiddenSize);
-                    float r = min(1.f, max(0.f, -activation));
-                    float g = min(1.f, max(0.f, activation));
-                    float b = 0;
-                    float a = min(1.f, abs(activation));
-                    ImPlot::PushStyleColor(ImPlotCol_Line, ImVec4(r, g, b, a));
+                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(outputWeights(i, j)));
                     std::stringstream label;
                     label << "synapse_o_" << i << "," << j;
                     plotLine(label.str().c_str(), Vec2d(0, inH), Vec2d(1, outH));
+                    ImPlot::PopStyleColor();
+                    label << "c";
+                    float activation = outputWeights(i, j) * hiddenActivations[j] + inputWeights(i, kHiddenSize);
+                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
+                    plotCircle<8>(label.str().c_str(), 1.f, outH, nodeRadius);
                     ImPlot::PopStyleColor();
                 }
 
