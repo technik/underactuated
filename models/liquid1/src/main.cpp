@@ -13,6 +13,7 @@
 #include "policy.h"
 
 #include <libs/eigen/Eigen/Core>
+#include <optional>
 
 using namespace math;
 
@@ -41,13 +42,48 @@ struct LinearTrack
     }
 };
 
+struct Simulation
+{
+    DifferentialCart cart;
+    LinearTrack testTrack;
+
+    void randomizeStart(SquirrelRng& rng)
+    {
+        cart.m_state.pos.x() = -testTrack.length * 0.5;
+        cart.m_state.pos.y() = -testTrack.width * 0.5 + testTrack.width * rng.uniform();
+        cart.m_state.orient = (-0.5 + rng.uniform()) * 3.1415927;
+        cart.m_state.vLeft = 0;
+        cart.m_state.vRight = 0;
+    }
+
+    void DrawSimState()
+    {
+        // Draw simulation state
+        if (ImGui::Begin("Simulation"))
+        {
+            float size = float(0.55 * testTrack.length);
+            if (ImPlot::BeginPlot("Cart", ImVec2(-1, -1), ImPlotFlags_Equal))
+            {
+                // Set up rigid axes
+                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
+                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
+                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
+
+                testTrack.draw();
+                cart.draw();
+            }
+            ImPlot::EndPlot();
+        }
+        ImGui::End();
+    }
+};
+
 class CartApp : public App
 {
 public:
     using Policy = MLPPolicy;
 
-    DifferentialCart cart;
-    LinearTrack testTrack;
+    Simulation m_sim;
     Policy m_bestPolicy;
     // LinearPolicy policy;
     // LinearPolicy bestPolicy;
@@ -65,18 +101,8 @@ public:
 
     CartApp()
     {
-        randomizeStart();
+        m_sim.randomizeStart(m_rng);
         m_bestPolicy.randomizeWeights(m_rng, weightAmplitude);
-        cart.m_state.pos.y() = 0; // Start at the center pos first
-    }
-
-    void randomizeStart()
-    {
-        cart.m_state.pos.x() = -testTrack.length * 0.5;
-        cart.m_state.pos.y() = -testTrack.width * 0.5 + testTrack.width * m_rng.uniform();
-        cart.m_state.orient = (-0.5 + m_rng.uniform()) * 3.1415927;
-        cart.m_state.vLeft = 0;
-        cart.m_state.vRight = 0;
     }
 
     void update() override
@@ -90,7 +116,7 @@ public:
         }
         if (m_simState == SimState::RandomExplore)
         {
-            // Do a random exploration first
+            // Generate a fixed training set
             
             // Do one epoch per step
             if (m_curEpoch < m_maxRandomEpoch)
@@ -155,7 +181,7 @@ public:
             }
         }
 
-        DrawSimulationState();
+        m_sim.DrawSimState();
         m_bestPolicy.DrawActivations();
     }
 
@@ -164,36 +190,19 @@ public:
         double totalScore = 0;
         for (int i = 0; i < m_iterationsPerEpoch; ++i)
         {
-            randomizeStart();
+            m_sim.randomizeStart(m_rng);
             bool alive = true;
             while (alive)
             {
-                alive = stepSimulation(policy);
+                auto res = stepSimulation(policy);
+                if (res.has_value())
+                {
+                    totalScore += res.value();
+                    break;
+                }
             }
-
-            totalScore += m_lastScore;
         }
         return totalScore;
-    }
-
-    void DrawSimulationState()
-    {
-        // Draw simulation state
-        if (ImGui::Begin("Simulation"))
-        {
-            float size = float(0.55 * testTrack.length);
-            if (ImPlot::BeginPlot("Cart", ImVec2(-1, -1), ImPlotFlags_Equal))
-            {
-                // Set up rigid axes
-                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
-                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
-                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
-
-                plotState();
-            }
-            ImPlot::EndPlot();
-        }
-        ImGui::End();
     }
 
     void drawUI()
@@ -219,15 +228,15 @@ public:
         // Plot params
         if (ImGui::CollapsingHeader("Params"))
         {
-            ImGui::InputDouble("Axis Len", &cart.m_params.axisLen);
-            ImGui::InputDouble("Max vel", &cart.m_params.maxWheelVel);
+            ImGui::InputDouble("Axis Len", &m_sim.cart.m_params.axisLen);
+            ImGui::InputDouble("Max vel", &m_sim.cart.m_params.maxWheelVel);
             ImGui::InputFloat("Amplitude", &weightAmplitude);
             ImGui::InputFloat("SGD diff step", &gradientStep);
             ImGui::InputFloat("SGD learn step", &learnStep);
 
             if (ImGui::Button("Generate"))
             {
-                cart.m_params.axisLen = 0.1 + 0.4 * m_rng.uniform();
+                m_sim.cart.m_params.axisLen = 0.1 + 0.4 * m_rng.uniform();
             }
         }
 
@@ -240,18 +249,6 @@ public:
             ImGui::Text("Epoch: %d", m_curEpoch);
             ImGui::Text("Last Score: %f", (float)m_lastScore);
             ImGui::Text("Best Score: %f", (float)m_bestScore / m_iterationsPerEpoch);
-        }
-
-        // Plot state
-        if(ImGui::CollapsingHeader("State"))
-        {
-            ImGui::InputDouble("Left", &cart.m_state.vLeft);
-            ImGui::InputDouble("Right", &cart.m_state.vRight);
-            ImGui::InputDouble("Angle", &cart.m_state.orient);
-            if (ImGui::Button("Randomize start"))
-            {
-                randomizeStart();
-            }
         }
     }
 
@@ -275,37 +272,36 @@ private:
         {
             m_accumTime -= m_stepDt;
 
-            bool stillAlive = stepSimulation(m_bestPolicy);
+            auto res = stepSimulation(m_bestPolicy);
+            if (res.has_value())
+            {
+                m_lastScore = res.value();
+                break;
+            }
         }
     }
 
     // returns whether the simulation is ongoing
-    bool stepSimulation(Policy& policy)
+    std::optional<float> stepSimulation(Policy& policy)
     {
         m_runTime += m_stepDt;
-        auto action = policy.computeAction(m_rng, cart, testTrack);
-        cart.step(m_stepDt, action);
-        bool dead = !testTrack.isValidPos(cart.m_state.pos);
-        bool win = testTrack.isGoal(cart.m_state.pos);
+        auto action = policy.computeAction(m_rng, m_sim.cart, m_sim.testTrack);
+        m_sim.cart.step(m_stepDt, action);
+        bool dead = !m_sim.testTrack.isValidPos(m_sim.cart.m_state.pos);
+        bool win = m_sim.testTrack.isGoal(m_sim.cart.m_state.pos);
         bool timeOut = m_runTime > m_timeOut;
         if (timeOut || dead || win)
         {
-            m_lastScore = testTrack.length * 0.5 + cart.m_state.pos.x();
-            randomizeStart();
+            float score = m_sim.testTrack.length * 0.5 + m_sim.cart.m_state.pos.x();
+            m_sim.randomizeStart(m_rng);
             m_runTime = 0;
-            return false;
+            return score;
         }
 
-        return true;
+        return {};
     }
     
     SquirrelRng m_rng;
-
-    void plotState()
-    {
-        testTrack.draw();
-        cart.draw();
-    }
 };
 
 // Main code
