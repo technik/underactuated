@@ -293,6 +293,8 @@ private:
         if (timeOut || dead || win)
         {
             float score = m_sim.testTrack.length * 0.5 + m_sim.cart.m_state.pos.x();
+            if (win)
+                score += m_timeOut - m_runTime;
             m_sim.randomizeStart(m_rng);
             m_runTime = 0;
             return score;
