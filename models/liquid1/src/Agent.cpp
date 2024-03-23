@@ -10,6 +10,15 @@
 
 using namespace std;
 
+void DifferentialCart::State::randomize(float minX, float maxX, float trackWidth, math::SquirrelRng& rng)
+{
+    pos.x() = rng.uniform(minX, maxX);
+    pos.y() = rng.uniform(-trackWidth * 0.5f, trackWidth * 0.5f);
+    orient = (-0.5 + rng.uniform()) * math::Pi;
+    vLeft = 0;
+    vRight = 0;
+}
+
 void DifferentialCart::step(double dt, const Input& action)
 {
     // Basic Euler integration

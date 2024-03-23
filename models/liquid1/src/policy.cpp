@@ -272,7 +272,7 @@ void MLPPolicy::DrawActivations()
                     plotLine(label.str().c_str(), Vec2d(-1, inH), Vec2d(0, outH));
                     ImPlot::PopStyleColor();
                     label << "c";
-                    float activation = hiddenWeights(i, j) * inputActivations[j] + inputWeights(i, kHiddenSize);
+                    float activation = hiddenWeights(i, j) * inputActivations[j] + hiddenWeights(i, kHiddenSize);
                     ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
                     plotCircle<8>(label.str().c_str(), 0.f, outH, nodeRadius);
                     ImPlot::PopStyleColor();
@@ -292,7 +292,7 @@ void MLPPolicy::DrawActivations()
                     plotLine(label.str().c_str(), Vec2d(0, inH), Vec2d(1, outH));
                     ImPlot::PopStyleColor();
                     label << "c";
-                    float activation = outputWeights(i, j) * hiddenActivations[j] + inputWeights(i, kHiddenSize);
+                    float activation = outputWeights(i, j) * hiddenActivations[j] + outputWeights(i, kHiddenSize);
                     ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
                     plotCircle<8>(label.str().c_str(), 1.f, outH, nodeRadius);
                     ImPlot::PopStyleColor();

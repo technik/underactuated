@@ -47,15 +47,6 @@ struct Simulation
     DifferentialCart cart;
     LinearTrack testTrack;
 
-    void randomizeStart(SquirrelRng& rng)
-    {
-        cart.m_state.pos.x() = -testTrack.length * 0.5;
-        cart.m_state.pos.y() = -testTrack.width * 0.5 + testTrack.width * rng.uniform();
-        cart.m_state.orient = (-0.5 + rng.uniform()) * 3.1415927;
-        cart.m_state.vLeft = 0;
-        cart.m_state.vRight = 0;
-    }
-
     void DrawSimState()
     {
         // Draw simulation state
@@ -82,6 +73,7 @@ class CartApp : public App
 {
 public:
     using Policy = MLPPolicy;
+    using Agent = DifferentialCart;
 
     Simulation m_sim;
     Policy m_bestPolicy;
@@ -90,6 +82,12 @@ public:
     float weightAmplitude = 1;
     float gradientStep = 0.01;
     float learnStep = 0.1;
+
+    int m_trainSetSize = 2000;
+    int m_validationSize = 100;
+
+    std::vector<Agent::State> m_trainSet;
+    std::vector<Agent::State> m_validationSet;
 
     enum class SimState
     {
@@ -101,8 +99,19 @@ public:
 
     CartApp()
     {
-        m_sim.randomizeStart(m_rng);
         m_bestPolicy.randomizeWeights(m_rng, weightAmplitude);
+    }
+
+    auto GenerateTestCases(SquirrelRng& rng, size_t numCases, bool anyStartPos)
+    {
+        auto minX = -0.5 * m_sim.testTrack.length;
+        auto maxX = anyStartPos ? 0.5 * m_sim.testTrack.length : minX;
+        std::vector<Agent::State> testSet(numCases);
+        for (auto& t : testSet)
+        {
+            t.randomize(minX, maxX, m_sim.testTrack.width, m_rng);
+        }
+        return testSet;
     }
 
     void update() override
@@ -188,11 +197,10 @@ public:
     float EvaluateBatch(MLPPolicy& policy)
     {
         double totalScore = 0;
-        for (int i = 0; i < m_iterationsPerEpoch; ++i)
+        for (auto& t : m_trainSet)
         {
-            m_sim.randomizeStart(m_rng);
-            bool alive = true;
-            while (alive)
+            m_sim.cart.m_state = t;
+            for (;;)
             {
                 auto res = stepSimulation(policy);
                 if (res.has_value())
@@ -209,6 +217,11 @@ public:
     {
         if (ImGui::Button("Train"))
         {
+            if (m_trainSet.size() != m_iterationsPerEpoch)
+            {
+                m_trainSet = GenerateTestCases(m_rng, m_iterationsPerEpoch, true);
+                m_validationSet = GenerateTestCases(m_rng, m_iterationsPerEpoch, false);
+            }
             m_simState = SimState::RandomExplore;
             m_curEpoch = 0;
         }
@@ -276,6 +289,8 @@ private:
             if (res.has_value())
             {
                 m_lastScore = res.value();
+                auto startPos = -m_sim.testTrack.length * 0.5f;
+                m_sim.cart.m_state.randomize(startPos, startPos, m_sim.testTrack.width, m_rng);
                 break;
             }
         }
@@ -295,7 +310,6 @@ private:
             float score = m_sim.testTrack.length * 0.5 + m_sim.cart.m_state.pos.x();
             if (win)
                 score += m_timeOut - m_runTime;
-            m_sim.randomizeStart(m_rng);
             m_runTime = 0;
             return score;
         }
