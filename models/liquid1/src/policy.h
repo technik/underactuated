@@ -36,7 +36,7 @@ struct LinearPolicy : CartPolicy
 struct MLPPolicy : CartPolicy
 {
     static inline constexpr size_t kNumOutputs = 2;
-    static inline constexpr size_t kNumInputs = 5;
+    static inline constexpr size_t kNumInputs = 7;
     static inline constexpr size_t kHiddenSize = 16;
     // All the +1 below are to make room for an implicit bias term
     Eigen::Matrix<float, kHiddenSize, kNumInputs+1> inputWeights;

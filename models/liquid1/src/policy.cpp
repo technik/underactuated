@@ -198,7 +198,9 @@ auto MLPPolicy::computeAction(SquirrelRng& rng, const DifferentialCart& agent, L
     inputVector[2] = state.pos.y();
     inputVector[3] = state.vLeft;
     inputVector[4] = state.vRight;
-    inputVector[5] = 1; // Bias
+    inputVector[5] = cos(state.orient);
+    inputVector[6] = sin(state.orient);
+    inputVector[7] = 1; // Bias
 
     // Input layer
     inputActivations.block<kHiddenSize,1>(0,0) = inputWeights * inputVector;
