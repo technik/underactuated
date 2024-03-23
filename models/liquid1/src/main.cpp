@@ -40,6 +40,65 @@ struct LinearTrack
     {
         return isValidPos(pos) && pos.x() > 0.5 * length;
     }
+
+    struct Segment
+    {
+        Segment() = default;
+        Segment(Vec2d s, Vec2d e)
+            : m_start(s), m_end(e)
+        {
+            m_dir = normalize(m_end - m_start);
+            m_normal = Vec2d(-m_dir.y(), m_dir.x());
+            m_len = dot(m_end - m_start, m_dir);
+        }
+        Vec2d m_start, m_end;
+        Vec2d m_dir, m_normal;
+        double m_len;
+
+        float closestPointDistance(const Vec2d& pos, Vec2d& outP)
+        {
+            auto t = dot(pos - m_start, m_dir);
+            outP = (t <= 0) ? m_start : ((t >= m_len) ? m_end : (m_start + t * m_dir));
+            return (outP - pos).norm();
+        }
+
+        struct ProjectedState
+        {
+            float x, y;
+            float cosT, sinT;
+        };
+
+        ProjectedState project(const Vec2d pos, const Vec2d dir)
+        {
+            ProjectedState result;
+            auto relPos = pos - m_start;
+            result.x = dot(relPos, m_dir);
+            result.y = dot(relPos, m_normal);
+            result.cosT = dot(dir, m_dir);
+            result.sinT = dot(dir, m_normal);
+
+            return result;
+        }
+    };
+
+    size_t closestSegment(const Vec2d& pos)
+    {
+        Vec2d cp;
+        float minDistance = std::numeric_limits<float>::max();
+        size_t segmentId = -1;
+        for (size_t i = 0; i < m_sectors.size(); ++i)
+        {
+            float t = m_sectors[0].closestPointDistance(pos, cp);
+            if (t < minDistance)
+            {
+                minDistance = t;
+                segmentId = i;
+            }
+        }
+        return segmentId;
+    };
+
+    std::vector<Segment> m_sectors;
 };
 
 struct Simulation
@@ -107,9 +166,12 @@ public:
         auto minX = -0.5 * m_sim.testTrack.length;
         auto maxX = anyStartPos ? 0.5 * m_sim.testTrack.length : minX;
         std::vector<Agent::State> testSet(numCases);
+        int numStartCases = numCases / 2; // Dedicate some cases to the start
+        int i = 0;
         for (auto& t : testSet)
         {
-            t.randomize(minX, maxX, m_sim.testTrack.width, m_rng);
+            t.randomize(minX, i > numStartCases ? maxX : minX, m_sim.testTrack.width, m_rng);
+            i++;
         }
         return testSet;
     }
