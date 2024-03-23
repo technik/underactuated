@@ -166,7 +166,7 @@ public:
 
                 if (m_useSGD)
                 {
-                    float dE = totalScore - m_bestScore;
+                    float dE = (totalScore - m_bestScore) / gradientStep;
                     // Apply gradient scaled correction
                     policy = m_bestPolicy;
                     policy.applyVariation(delta, learnStep * dE);
