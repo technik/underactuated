@@ -19,8 +19,107 @@ using namespace math;
 
 struct LinearTrack
 {
-    double length = 10;
+    double length = 10; // deprecated
     double width = 1;
+    float radius = 10;
+
+    std::vector<float> m_insideLineX;
+    std::vector<float> m_insideLineY;
+    std::vector<float> m_outsideLineX;
+    std::vector<float> m_outsideLineY;
+
+    std::vector<float> m_sectorCumLen;
+
+    void Init()
+    {
+        // vertices:
+        constexpr auto numVtx = 5;
+
+        // Init track corners
+        Vec2d v[numVtx];
+        for (size_t i = 0; i < numVtx; ++i)
+        {
+            v[i] = Vec2d(
+                radius * cos(-math::TwoPi * i / numVtx),
+                radius * sin(-math::TwoPi * i / numVtx));
+        }
+
+        // Init track sectors
+        m_sectors.resize(numVtx-1);
+        for (size_t i = 0; i < numVtx-1; ++i)
+        {
+            m_sectors[i] = Segment(v[i], v[i+1]);
+        }
+
+        // Cache drawing lines
+        m_insideLineX.resize(numVtx);
+        m_insideLineY.resize(numVtx);
+        m_outsideLineX.resize(numVtx);
+        m_outsideLineY.resize(numVtx);
+        for (size_t i = 0; i < numVtx; ++i)
+        {
+            Vec2d n;
+            if (i == 0)
+            {
+                n = 0.5 * width * m_sectors[0].m_normal;
+            }
+            else if (i == numVtx - 1)
+            {
+                n = 0.5 * width * m_sectors.back().m_normal;
+            }
+            else
+            {
+                n = 0.5 * width * normalize(m_sectors[i-1].m_normal + m_sectors[i].m_normal);
+            }
+            auto inside = v[i] - n;
+            auto outside = v[i] + n;
+            m_insideLineX[i] = inside.x();
+            m_insideLineY[i] = inside.y();
+            m_outsideLineX[i] = outside.x();
+            m_outsideLineY[i] = outside.y();
+        }
+
+        // cache sector cummulative length
+        float accumPath = 0;
+        m_sectorCumLen.resize(m_sectors.size());
+        for (size_t i = 0; i < numVtx - 1; ++i)
+        {
+            m_sectorCumLen[i] = accumPath;
+            accumPath += m_sectors[i].m_len;
+        }
+    }
+
+    bool m_plotOpen = false;
+
+    void BeginPlot()
+    {
+        // Draw simulation state
+        if (ImGui::Begin("SimTrack"))
+        {
+            float size = radius + width;
+            m_plotOpen = ImPlot::BeginPlot("Track", ImVec2(-1, -1), ImPlotFlags_Equal);
+            if(m_plotOpen)
+            {
+                // Set up rigid axes
+                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
+                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
+                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
+
+                // Draw track limits
+                ImPlot::PlotLine("inside", m_insideLineX.data(), m_insideLineY.data(), m_insideLineX.size());
+                ImPlot::PlotLine("outside", m_outsideLineX.data(), m_outsideLineY.data(), m_outsideLineX.size());
+            }
+        }
+    }
+
+    void EndPlot()
+    {
+        if (m_plotOpen)
+        {
+            ImPlot::EndPlot();
+        }
+        ImGui::End();
+    }
 
     void draw()
     {
@@ -125,6 +224,9 @@ struct Simulation
             ImPlot::EndPlot();
         }
         ImGui::End();
+
+        testTrack.BeginPlot();
+        testTrack.EndPlot();
     }
 };
 
@@ -159,6 +261,7 @@ public:
     CartApp()
     {
         m_bestPolicy.randomizeWeights(m_rng, weightAmplitude);
+        m_sim.testTrack.Init();
     }
 
     auto GenerateTestCases(SquirrelRng& rng, size_t numCases, bool anyStartPos)
