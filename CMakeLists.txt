@@ -14,18 +14,22 @@ add_definitions(-DWIN32_LEAN_AND_MEAN -DWIN32_EXTRA_LEAN -DNOMINMAX)
 
 find_package(D3D12 REQUIRED)
 
-macro(GroupSources curdir)
-    file(GLOB children RELATIVE ${PROJECT_SOURCE_DIR}/${curdir}
-${PROJECT_SOURCE_DIR}/${curdir}/*)
-    foreach(child ${children})
-        if(IS_DIRECTORY ${PROJECT_SOURCE_DIR}/${curdir}/${child})
-            GroupSources(${curdir}/${child})
-        else()
-            string(REPLACE "/" "\\" groupname ${curdir})
-            source_group(${groupname} FILES ${PROJECT_SOURCE_DIR}/${curdir}/${child})
-          endif()
-   endforeach()
+# Clasify sources according to folder structure. Useful for having nice visual studio filters.
+# This macro is derived from http://www.cmake.org/pipermail/cmake/2013-November/056336.html
+macro(GroupSources curdir dirLabel)
+	file(GLOB children RELATIVE ${PROJECT_SOURCE_DIR}/${curdir}
+		${PROJECT_SOURCE_DIR}/${curdir}/*)
+	foreach(child ${children})
+		if(IS_DIRECTORY ${PROJECT_SOURCE_DIR}/${curdir}/${child})
+			GroupSources(${curdir}/${child} ${dirLabel}/${child})
+		else()
+			string(REPLACE "/" "\\" groupname ${dirLabel})
+			source_group(${groupname} FILES
+				${PROJECT_SOURCE_DIR}/${curdir}/${child})
+		endif()
+	endforeach()
 endmacro()
+
 
 ###################################################################################################
 macro(compile_HLSL_flags _SOURCE SOURCE_LIST OUTPUT_LIST _PROFILE)
@@ -47,13 +51,16 @@ macro(compile_HLSL_flags _SOURCE SOURCE_LIST OUTPUT_LIST _PROFILE)
 endmacro()
 
 # Common libs
-file(GLOB_RECURSE coreSrc "math/*.h" libs/imgui/*.cpp libs/implot/*.cpp)
-GroupSources(coreSrc)
+file(GLOB_RECURSE coreSrc "math/*.h" "ml/*.h" "libs/imgui/*.cpp" "libs/implot/*.cpp")
+GroupSources(math core)
+GroupSources(libs/imgui imgui)
+GroupSources(ml ml)
 add_library(core ${coreSrc})
 target_include_directories(core PUBLIC
     .
     libs/imgui
-    libs/implot)
+    libs/implot
+    ml)
 
 add_subdirectory(models/acrobot)
 add_subdirectory(models/pendulum)
