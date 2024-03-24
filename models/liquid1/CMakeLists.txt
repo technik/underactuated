@@ -3,9 +3,8 @@
 ################################################################################
 project(liquid1)
 
-file(GLOB_RECURSE LIQUID1_SRC "src/*.cpp" "src/*.h" "../../ml/*.h")
+file(GLOB_RECURSE LIQUID1_SRC "src/*.cpp" "src/*.h")
 GroupSources(src liquid1)
-GroupSources(../../ml ml)
 add_executable(liquid1 ${LIQUID1_SRC})
 target_include_directories(liquid1 PUBLIC
     ../../
