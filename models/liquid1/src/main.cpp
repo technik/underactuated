@@ -273,7 +273,7 @@ public:
         int i = 0;
         for (auto& t : testSet)
         {
-            t.randomize(minX, i > numStartCases ? maxX : minX, m_sim.testTrack.width, m_rng);
+            t.randomize(minX, i >= numStartCases ? maxX : minX, m_sim.testTrack.width, m_rng);
             i++;
         }
         return testSet;
@@ -321,20 +321,26 @@ public:
             // Do one epoch per step
             if (m_maxSGDEpoch == 0 || m_curEpoch < m_maxSGDEpoch)
             {
+                if (m_curEpoch == 0)
+                {
+                    m_bestScore = EvaluateBatch(m_bestPolicy);
+                }
+
                 // Generate a random gradient
                 auto delta = m_bestPolicy.generateVariation(m_rng, gradientStep);
                 auto policy = m_bestPolicy;
-                policy.applyVariation(delta, 1.f);
+                policy.applyVariation(delta);
 
                 // Evaluate a batch
                 float totalScore = EvaluateBatch(policy);
 
                 if (m_useSGD)
                 {
-                    float dE = (totalScore - m_bestScore) / gradientStep;
+                    float dE = (totalScore - m_bestScore) * (learnStep / gradientStep);
                     // Apply gradient scaled correction
                     policy = m_bestPolicy;
-                    policy.applyVariation(delta, learnStep * dE);
+                    Eigen::Matrix<float,-1,-1> dW = delta * dE;
+                    policy.applyVariation(dW);
 
                     // Re-evaluate
                     totalScore = EvaluateBatch(policy);

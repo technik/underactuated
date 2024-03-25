@@ -98,95 +98,17 @@ void LinearPolicy::DrawActivations()
 
 void MLPPolicy::randomizeWeights(SquirrelRng& rng, float amplitude)
 {
-    // Input layer
-    for (int i = 0; i < kHiddenSize; ++i)
-    {
-        for (int j = 0; j < kNumInputs+1; ++j)
-        {
-            inputWeights(i, j) = amplitude * (rng.uniform() * 2 - 1);
-        }
-    }
-
-    // Hidden layer
-    for (int i = 0; i < kHiddenSize; ++i)
-    {
-        for (int j = 0; j < kHiddenSize+1; ++j)
-        {
-            hiddenWeights(i, j) = amplitude * (rng.uniform() * 2 - 1);
-        }
-    }
-
-    // Output layer
-    for (int i = 0; i < kNumOutputs; ++i)
-    {
-        for (int j = 0; j < kHiddenSize+1; ++j)
-        {
-            outputWeights(i, j) = amplitude * (rng.uniform() * 2 - 1);
-        }
-    }
+    m_network.randomize(rng);
 }
 
-MLPPolicy MLPPolicy::generateVariation(math::SquirrelRng& rng, float variationStep) const
+auto MLPPolicy::generateVariation(math::SquirrelRng& rng, float variationStep) const -> Matrix
 {
-    MLPPolicy variation = *this;
-    // Input layer
-    for (int i = 0; i < kHiddenSize; ++i)
-    {
-        for (int j = 0; j < kNumInputs + 1; ++j)
-        {
-            variation.inputWeights(i, j) = variationStep * (rng.uniform() * 2 - 1);
-        }
-    }
-
-    // Hidden layer
-    for (int i = 0; i < kHiddenSize; ++i)
-    {
-        for (int j = 0; j < kHiddenSize + 1; ++j)
-        {
-            variation.hiddenWeights(i, j) = variationStep * (rng.uniform() * 2 - 1);
-        }
-    }
-
-    // Output layer
-    for (int i = 0; i < kNumOutputs; ++i)
-    {
-        for (int j = 0; j < kHiddenSize + 1; ++j)
-        {
-            variation.outputWeights(i, j) = variationStep * (rng.uniform() * 2 - 1);
-        }
-    }
-
-    return variation;
+    return m_network.randomDelta(rng, variationStep);
 }
 
-void MLPPolicy::applyVariation(const MLPPolicy& delta, float scale)
+void MLPPolicy::applyVariation(const Matrix& delta)
 {
-    // Input layer
-    for (int i = 0; i < kHiddenSize; ++i)
-    {
-        for (int j = 0; j < kNumInputs + 1; ++j)
-        {
-            inputWeights(i, j) += scale * delta.inputWeights(i, j);
-        }
-    }
-
-    // Hidden layer
-    for (int i = 0; i < kHiddenSize; ++i)
-    {
-        for (int j = 0; j < kHiddenSize + 1; ++j)
-        {
-            hiddenWeights(i, j) += scale * delta.hiddenWeights(i, j);
-        }
-    }
-
-    // Output layer
-    for (int i = 0; i < kNumOutputs; ++i)
-    {
-        for (int j = 0; j < kHiddenSize + 1; ++j)
-        {
-            outputWeights(i, j) += scale * delta.outputWeights(i, j);
-        }
-    }
+    m_network.step(delta);
 }
 
 auto MLPPolicy::computeAction(SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) -> Action
@@ -200,32 +122,12 @@ auto MLPPolicy::computeAction(SquirrelRng& rng, const DifferentialCart& agent, L
     inputVector[4] = state.vRight;
     inputVector[5] = cos(state.orient);
     inputVector[6] = sin(state.orient);
-    inputVector[7] = 1; // Bias
 
-    // Input layer
-    inputActivations.block<kHiddenSize,1>(0,0) = inputWeights * inputVector;
-    // Relu
-    for (int i = 0; i < kHiddenSize; ++i)
-    {
-        inputActivations(i) = max(0.f, inputActivations(i));
-    }
-    inputActivations[kHiddenSize] = 1; // Implicit bias term
-
-    // Hidden layer
-    hiddenActivations.block<kHiddenSize, 1>(0, 0) = hiddenWeights * inputActivations;
-    // Relu
-    for (int i = 0; i < kHiddenSize; ++i)
-    {
-        hiddenActivations(i) = max(0.f, hiddenActivations(i));
-    }
-    hiddenActivations[kHiddenSize] = 1; // Implicit bias term
-
-    // Hidden layer
-    outputActivations = outputWeights * hiddenActivations;
+    auto activations = m_network.forward(inputVector);
 
     Action action;
-    action.dvLeft = outputActivations[0];
-    action.dvRight = outputActivations[1];
+    action.dvLeft = activations(0);
+    action.dvRight = activations(1);
     return action;
 }
 
@@ -248,18 +150,19 @@ void MLPPolicy::DrawActivations()
                 for (int j = 0; j < kNumInputs; ++j)
                 {
                     float inH = kNumInputs / 2 - 0.5 - j;
-                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(inputWeights(i, j)));
+                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(m_network.m_layers[0].W(i, j)));
                     std::stringstream label;
-                    label << "synapse_i_" << i << "," << j;
+                    label << "synapse0_i_" << i << "," << j;
                     plotLine(label.str().c_str(), Vec2d(-2, inH), Vec2d(-1, outH));
-                    ImPlot::PopStyleColor();
-                    label << "c";
-                    float activation = inputWeights(i, j) * inputVector[j] + inputWeights(i, kNumInputs);
-                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
-                    plotCircle<8>(label.str().c_str(), -1.f, outH, nodeRadius);
                     ImPlot::PopStyleColor();
                 }
 
+                std::stringstream label;
+                label << "activ0_i" << i;
+                float activation = m_network.m_activationCache[1](i);
+                ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
+                plotCircle<8>(label.str().c_str(), -1.f, outH, nodeRadius);
+                ImPlot::PopStyleColor();
             }
 
             for (int i = 0; i < kHiddenSize; ++i)
@@ -268,18 +171,19 @@ void MLPPolicy::DrawActivations()
                 for (int j = 0; j < kHiddenSize; ++j)
                 {
                     float inH = kHiddenSize / 2 - 0.5 - j;
-                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(hiddenWeights(i, j)));
+                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(m_network.m_layers[1].W(i, j)));
                     std::stringstream label;
                     label << "synapse_h_" << i << "," << j;
                     plotLine(label.str().c_str(), Vec2d(-1, inH), Vec2d(0, outH));
                     ImPlot::PopStyleColor();
-                    label << "c";
-                    float activation = hiddenWeights(i, j) * inputActivations[j] + hiddenWeights(i, kHiddenSize);
-                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
-                    plotCircle<8>(label.str().c_str(), 0.f, outH, nodeRadius);
-                    ImPlot::PopStyleColor();
                 }
 
+                std::stringstream label;
+                label << "activH_i" << i;
+                float activation = m_network.m_activationCache[2](i);
+                ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
+                plotCircle<8>(label.str().c_str(), 0.f, outH, nodeRadius);
+                ImPlot::PopStyleColor();
             }
 
             for (int i = 0; i < kNumOutputs; ++i)
@@ -288,18 +192,19 @@ void MLPPolicy::DrawActivations()
                 for (int j = 0; j < kHiddenSize; ++j)
                 {
                     float inH = kHiddenSize / 2 - 0.5 - j;
-                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(outputWeights(i, j)));
+                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(m_network.m_layers[2].W(i, j)));
                     std::stringstream label;
                     label << "synapse_o_" << i << "," << j;
                     plotLine(label.str().c_str(), Vec2d(0, inH), Vec2d(1, outH));
                     ImPlot::PopStyleColor();
-                    label << "c";
-                    float activation = outputWeights(i, j) * hiddenActivations[j] + outputWeights(i, kHiddenSize);
-                    ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
-                    plotCircle<8>(label.str().c_str(), 1.f, outH, nodeRadius);
-                    ImPlot::PopStyleColor();
                 }
 
+                std::stringstream label;
+                label << "activH_o" << i;
+                float activation = m_network.m_activationCache[3](i);
+                ImPlot::PushStyleColor(ImPlotCol_Line, mapColor(activation));
+                plotCircle<8>(label.str().c_str(), 1.f, outH, nodeRadius);
+                ImPlot::PopStyleColor();
             }
         }
         ImPlot::EndPlot();

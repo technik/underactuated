@@ -83,7 +83,7 @@ namespace nn
             return delta;
         }
         
-        void step(Matrix delta)
+        void step(const Matrix& delta)
         {
             auto row0 = 0;
             for (auto& layer : m_layers)

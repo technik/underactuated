@@ -3,7 +3,8 @@
 #include "Agent.h"
 #include <math/noise.h>
 
-#include <libs/eigen/Eigen/Core>
+#include <Eigen/Core>
+#include <ml/nn/FullyConnectedNN.h>
 
 struct LinearTrack;
 
@@ -38,18 +39,20 @@ struct MLPPolicy : CartPolicy
     static inline constexpr size_t kNumOutputs = 2;
     static inline constexpr size_t kNumInputs = 7;
     static inline constexpr size_t kHiddenSize = 16;
-    // All the +1 below are to make room for an implicit bias term
-    Eigen::Matrix<float, kHiddenSize, kNumInputs+1> inputWeights;
-    Eigen::Matrix<float, kHiddenSize, kHiddenSize+1> hiddenWeights;
-    Eigen::Matrix<float, kNumOutputs, kHiddenSize+1> outputWeights;
-    Eigen::Vector<float, kNumInputs+1> inputVector;
-    Eigen::Vector<float, kHiddenSize+1> inputActivations;
-    Eigen::Vector<float, kHiddenSize+1> hiddenActivations;
-    Eigen::Vector<float, kNumOutputs> outputActivations;
+    
+    nn::FullyConnectedNN m_network;
+    using Matrix = nn::FullyConnectedNN::Matrix;
+
+    Eigen::Vector<float, kNumInputs> inputVector;
+
+    MLPPolicy()
+    {
+        m_network = nn::FullyConnectedNN(1, kNumInputs, kHiddenSize, kNumOutputs);
+    }
 
     void randomizeWeights(math::SquirrelRng& rng, float amplitude);
-    MLPPolicy generateVariation(math::SquirrelRng& rng, float variationStep) const;
-    void applyVariation(const MLPPolicy& delta, float scale);
+    Matrix generateVariation(math::SquirrelRng& rng, float variationStep) const;
+    void applyVariation(const Matrix& delta);
 
     Action computeAction(math::SquirrelRng& rng, const DifferentialCart& agent, LinearTrack& track) override;
 
