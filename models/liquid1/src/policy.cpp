@@ -118,10 +118,8 @@ auto MLPPolicy::computeAction(SquirrelRng& rng, const DifferentialCart& agent, L
     inputVector[0] = state.orient;
     inputVector[1] = state.pos.x();
     inputVector[2] = state.pos.y();
-    inputVector[3] = state.vLeft;
-    inputVector[4] = state.vRight;
-    inputVector[5] = cos(state.orient);
-    inputVector[6] = sin(state.orient);
+    inputVector[3] = cos(state.orient);
+    inputVector[4] = sin(state.orient);
 
     auto activations = m_network.forward(inputVector);
 

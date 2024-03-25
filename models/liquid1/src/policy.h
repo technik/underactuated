@@ -37,7 +37,7 @@ struct LinearPolicy : CartPolicy
 struct MLPPolicy : CartPolicy
 {
     static inline constexpr size_t kNumOutputs = 2;
-    static inline constexpr size_t kNumInputs = 7;
+    static inline constexpr size_t kNumInputs = 5;
     static inline constexpr size_t kHiddenSize = 16;
     
     nn::FullyConnectedNN m_network;
