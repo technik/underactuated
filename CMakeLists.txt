@@ -51,15 +51,17 @@ macro(compile_HLSL_flags _SOURCE SOURCE_LIST OUTPUT_LIST _PROFILE)
 endmacro()
 
 # Common libs
-file(GLOB_RECURSE coreSrc "math/*.h" "ml/*.h" "libs/imgui/*.cpp" "libs/implot/*.cpp")
+file(GLOB_RECURSE coreSrc "math/*.h" "libs/Eigen/Eigen/*" "ml/*.h" "libs/imgui/*.cpp" "libs/implot/*.cpp")
 GroupSources(math core)
 GroupSources(libs/imgui imgui)
+GroupSources(libs/eigen/Eigen eigen)
 GroupSources(ml ml)
 add_library(core ${coreSrc})
 target_include_directories(core PUBLIC
     .
     libs/imgui
     libs/implot
+    libs/Eigen
     ml)
 
 add_subdirectory(models/acrobot)
