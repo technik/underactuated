@@ -11,194 +11,12 @@
 
 #include "Agent.h"
 #include "policy.h"
+#include "track.h"
 
-#include <libs/eigen/Eigen/Core>
+#include <Eigen/Core>
 #include <optional>
 
 using namespace math;
-
-struct LinearTrack
-{
-    double length = 10; // deprecated
-    double width = 1;
-    float radius = 10;
-
-    std::vector<float> m_insideLineX;
-    std::vector<float> m_insideLineY;
-    std::vector<float> m_outsideLineX;
-    std::vector<float> m_outsideLineY;
-
-    std::vector<float> m_sectorCumLen;
-
-    void Init()
-    {
-        // vertices:
-        constexpr auto numVtx = 5;
-
-        // Init track corners
-        Vec2d v[numVtx];
-        for (size_t i = 0; i < numVtx; ++i)
-        {
-            v[i] = Vec2d(
-                radius * cos(-math::TwoPi * i / numVtx),
-                radius * sin(-math::TwoPi * i / numVtx));
-        }
-
-        // Init track sectors
-        m_sectors.resize(numVtx-1);
-        for (size_t i = 0; i < numVtx-1; ++i)
-        {
-            m_sectors[i] = Segment(v[i], v[i+1]);
-        }
-
-        // Cache drawing lines
-        m_insideLineX.resize(numVtx);
-        m_insideLineY.resize(numVtx);
-        m_outsideLineX.resize(numVtx);
-        m_outsideLineY.resize(numVtx);
-        for (size_t i = 0; i < numVtx; ++i)
-        {
-            Vec2d n;
-            if (i == 0)
-            {
-                n = 0.5 * width * m_sectors[0].m_normal;
-            }
-            else if (i == numVtx - 1)
-            {
-                n = 0.5 * width * m_sectors.back().m_normal;
-            }
-            else
-            {
-                n = 0.5 * width * normalize(m_sectors[i-1].m_normal + m_sectors[i].m_normal);
-            }
-            auto inside = v[i] - n;
-            auto outside = v[i] + n;
-            m_insideLineX[i] = inside.x();
-            m_insideLineY[i] = inside.y();
-            m_outsideLineX[i] = outside.x();
-            m_outsideLineY[i] = outside.y();
-        }
-
-        // cache sector cummulative length
-        float accumPath = 0;
-        m_sectorCumLen.resize(m_sectors.size());
-        for (size_t i = 0; i < numVtx - 1; ++i)
-        {
-            m_sectorCumLen[i] = accumPath;
-            accumPath += m_sectors[i].m_len;
-        }
-    }
-
-    bool m_plotOpen = false;
-
-    void BeginPlot()
-    {
-        // Draw simulation state
-        if (ImGui::Begin("SimTrack"))
-        {
-            float size = radius + width;
-            m_plotOpen = ImPlot::BeginPlot("Track", ImVec2(-1, -1), ImPlotFlags_Equal);
-            if(m_plotOpen)
-            {
-                // Set up rigid axes
-                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
-                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
-                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
-
-                // Draw track limits
-                ImPlot::PlotLine("inside", m_insideLineX.data(), m_insideLineY.data(), m_insideLineX.size());
-                ImPlot::PlotLine("outside", m_outsideLineX.data(), m_outsideLineY.data(), m_outsideLineX.size());
-            }
-        }
-    }
-
-    void EndPlot()
-    {
-        if (m_plotOpen)
-        {
-            ImPlot::EndPlot();
-        }
-        ImGui::End();
-    }
-
-    void draw()
-    {
-        const auto hLen = length * 0.5;
-        const auto hWid = width * 0.5;
-
-        plotLine("top", Vec2d(-hLen, hWid), Vec2d(hLen, hWid));
-        plotLine("bottom", Vec2d(-hLen, -hWid), Vec2d(hLen, -hWid));
-    }
-
-    bool isValidPos(const Vec2d& pos) const
-    {
-        return abs(pos.y()) <= 0.5 * width && pos.x() >= -0.5 * length;
-    }
-
-    bool isGoal(const Vec2d& pos) const
-    {
-        return isValidPos(pos) && pos.x() > 0.5 * length;
-    }
-
-    struct Segment
-    {
-        Segment() = default;
-        Segment(Vec2d s, Vec2d e)
-            : m_start(s), m_end(e)
-        {
-            m_dir = normalize(m_end - m_start);
-            m_normal = Vec2d(-m_dir.y(), m_dir.x());
-            m_len = dot(m_end - m_start, m_dir);
-        }
-        Vec2d m_start, m_end;
-        Vec2d m_dir, m_normal;
-        double m_len;
-
-        float closestPointDistance(const Vec2d& pos, Vec2d& outP)
-        {
-            auto t = dot(pos - m_start, m_dir);
-            outP = (t <= 0) ? m_start : ((t >= m_len) ? m_end : (m_start + t * m_dir));
-            return (outP - pos).norm();
-        }
-
-        struct ProjectedState
-        {
-            float x, y;
-            float cosT, sinT;
-        };
-
-        ProjectedState project(const Vec2d pos, const Vec2d dir)
-        {
-            ProjectedState result;
-            auto relPos = pos - m_start;
-            result.x = dot(relPos, m_dir);
-            result.y = dot(relPos, m_normal);
-            result.cosT = dot(dir, m_dir);
-            result.sinT = dot(dir, m_normal);
-
-            return result;
-        }
-    };
-
-    size_t closestSegment(const Vec2d& pos)
-    {
-        Vec2d cp;
-        float minDistance = std::numeric_limits<float>::max();
-        size_t segmentId = -1;
-        for (size_t i = 0; i < m_sectors.size(); ++i)
-        {
-            float t = m_sectors[0].closestPointDistance(pos, cp);
-            if (t < minDistance)
-            {
-                minDistance = t;
-                segmentId = i;
-            }
-        }
-        return segmentId;
-    };
-
-    std::vector<Segment> m_sectors;
-};
 
 struct Simulation
 {
@@ -208,24 +26,8 @@ struct Simulation
     void DrawSimState()
     {
         // Draw simulation state
-        if (ImGui::Begin("Simulation"))
-        {
-            float size = float(0.55 * testTrack.length);
-            if (ImPlot::BeginPlot("Cart", ImVec2(-1, -1), ImPlotFlags_Equal))
-            {
-                // Set up rigid axes
-                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
-                ImPlot::SetupAxisLimits(ImAxis_X1, -size, size, ImGuiCond_Always);
-                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
-
-                testTrack.draw();
-                cart.draw();
-            }
-            ImPlot::EndPlot();
-        }
-        ImGui::End();
-
         testTrack.BeginPlot();
+        cart.draw();
         testTrack.EndPlot();
     }
 };
@@ -266,14 +68,15 @@ public:
 
     auto GenerateTestCases(SquirrelRng& rng, size_t numCases, bool anyStartPos)
     {
-        auto minX = -0.5 * m_sim.testTrack.length;
-        auto maxX = anyStartPos ? 0.5 * m_sim.testTrack.length : minX;
         std::vector<Agent::State> testSet(numCases);
         int numStartCases = numCases / 2; // Dedicate some cases to the start
         int i = 0;
         for (auto& t : testSet)
         {
-            t.randomize(minX, i >= numStartCases ? maxX : minX, m_sim.testTrack.width, m_rng);
+            t.pos = i >= numStartCases ? m_sim.testTrack.samplePosition(m_rng) : m_sim.testTrack.sampleStartPos(m_rng);
+            t.orient = (-0.5 + rng.uniform()) * math::Pi;
+            t.vLeft = 0;
+            t.vRight = 0;
             i++;
         }
         return testSet;
@@ -440,7 +243,7 @@ private:
     double m_accumTime = 0;
     double m_stepDt = 0.01;
     double m_runTime = 0;
-    double m_timeOut = 10;
+    double m_timeOut = 20;
     double m_lastScore = 0;
     double m_bestScore = 0;
     bool m_useSGD = true;
@@ -460,8 +263,10 @@ private:
             if (res.has_value())
             {
                 m_lastScore = res.value();
-                auto startPos = -m_sim.testTrack.length * 0.5f;
-                m_sim.cart.m_state.randomize(startPos, startPos, m_sim.testTrack.width, m_rng);
+                m_sim.cart.m_state.pos = m_sim.testTrack.sampleStartPos(m_rng);
+                m_sim.cart.m_state.orient = m_rng.uniform(0, math::TwoPi);
+                m_sim.cart.m_state.vLeft = 0;
+                m_sim.cart.m_state.vRight = 0;
                 break;
             }
         }
@@ -473,12 +278,12 @@ private:
         m_runTime += m_stepDt;
         auto action = policy.computeAction(m_rng, m_sim.cart, m_sim.testTrack);
         m_sim.cart.step(m_stepDt, action);
-        bool dead = !m_sim.testTrack.isValidPos(m_sim.cart.m_state.pos);
+        bool dead = !m_sim.testTrack.isValid(m_sim.cart.m_state.pos);
         bool win = m_sim.testTrack.isGoal(m_sim.cart.m_state.pos);
         bool timeOut = m_runTime > m_timeOut;
         if (timeOut || dead || win)
         {
-            float score = m_sim.testTrack.length * 0.5 + m_sim.cart.m_state.pos.x();
+            float score = m_sim.testTrack.score(m_sim.cart.m_state.pos);
             if (win)
                 score += m_timeOut - m_runTime;
             m_runTime = 0;

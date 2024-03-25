@@ -17,8 +17,6 @@ struct DifferentialCart
         double vLeft = 0;
         math::Vec2d pos = {};
         double orient = 0;
-
-        void randomize(float minX, float maxX, float trackWidth, math::SquirrelRng& rng);
     } m_state;
 
     struct Input
