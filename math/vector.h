@@ -23,6 +23,7 @@
 #ifndef AVR
 #include <initializer_list>
 #endif // AVR
+#include <algorithm>
 
 #ifdef AVR
 #define FORCE_INLINE inline
