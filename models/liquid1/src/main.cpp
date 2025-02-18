@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "implot.h"
 #include "plot.h"
+#include <chrono>
 #include <cmath>
 #include "app.h"
 #include <math/vector.h>
@@ -251,10 +252,15 @@ private:
     int m_maxRandomEpoch = 2000;
     int m_maxSGDEpoch = 2000;
     int m_iterationsPerEpoch = 100;
+    std::chrono::high_resolution_clock::time_point t0{};
 
     void advanceSimulation()
     {
-        m_accumTime += 1 / 60.0;
+        auto now = std::chrono::high_resolution_clock::now();
+        auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(now-t0).count() / 1000.f;
+        m_accumTime += dt;
+        t0 = now;
+
         while (m_accumTime > m_stepDt)
         {
             m_accumTime -= m_stepDt;
