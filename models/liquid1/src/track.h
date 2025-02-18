@@ -16,6 +16,8 @@ struct LinearTrack
 
     std::vector<float> m_sectorCumLen;
 
+    virtual std::vector<math::Vec2d> generateVertices();
+
     void Init();
 
     bool m_plotOpen = false;

@@ -7,18 +7,30 @@
 
 using namespace math;
 
+std::vector<math::Vec2d> LinearTrack::generateVertices()
+{
+    // Init track corners
+    std::vector<math::Vec2d> corners = {
+        {-1, 0.7},
+        {0.8, 1},
+        {1, 0},
+        {-1, -1},
+        {1, -1}
+    };
+
+    return corners;
+}
+
 void LinearTrack::Init()
 {
     // vertices:
-    constexpr auto numVtx = 5;
+    auto v = generateVertices();
+    const auto numVtx = v.size();
 
-    // Init track corners
-    Vec2d v[numVtx];
+    // Scale track size
     for (size_t i = 0; i < numVtx; ++i)
     {
-        v[i] = Vec2d(
-            radius * cos(-math::TwoPi * i / numVtx),
-            radius * sin(-math::TwoPi * i / numVtx));
+        v[i] = radius * v[i];
     }
 
     // Init track sectors
